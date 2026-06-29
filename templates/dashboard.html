@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Engineering Office{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block breadcrumb %}<span>Home</span> <i class="bi bi-chevron-right"></i> <span>Dashboard</span>{% endblock %}
+
+{% block topbar_right %}
+<div class="topbar-stor-chip {{ 'is-crit' if stor.critical else 'is-warn' if stor.warning else '' }}">
+  {% if stor.critical %}<i class="bi bi-exclamation-triangle-fill"></i> Storage Critical
+  {% elif stor.warning %}<i class="bi bi-exclamation-circle-fill"></i> {{ stor.pct }}% Used
+  {% else %}<i class="bi bi-hdd-fill"></i> {{ stor.pct }}% Used{% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Hero Banner ──────────────────────────────────────── -->
+<div class="dash-hero">
+  <div class="dash-hero-content">
+    <p class="dash-hero-eyebrow">Municipal Engineering Office &middot; Sta. Lucia, Ilocos Sur</p>
+    <h2 class="dash-hero-title">Welcome back, {{ session.fullname.split(' ')[0] }}</h2>
+    <p class="dash-hero-sub">Manage drawings, specifications, contracts, and project records from one secure workspace.</p>
+  </div>
+  <div class="dash-hero-art" aria-hidden="true">
+    <svg viewBox="0 0 220 160" class="hero-blueprint-svg">
+      <g stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="110" cy="80" r="3" fill="currentColor"/>
+        <line x1="110" y1="80" x2="60" y2="140"/>
+        <line x1="110" y1="80" x2="160" y2="140"/>
+        <line x1="60" y1="140" x2="160" y2="140" stroke-dasharray="4 4"/>
+        <line x1="110" y1="80" x2="110" y2="30"/>
+        <path d="M95 45 L110 30 L125 45"/>
+      </g>
+      <g stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.55">
+        <rect x="20" y="60" width="60" height="70"/>
+        <line x1="20" y1="80" x2="80" y2="80"/>
+        <line x1="20" y1="100" x2="80" y2="100"/>
+        <line x1="40" y1="60" x2="40" y2="130"/>
+        <line x1="60" y1="60" x2="60" y2="130"/>
+        <polygon points="20,60 50,30 80,60"/>
+      </g>
+      <g stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.4">
+        <line x1="140" y1="20" x2="210" y2="20"/>
+        <line x1="145" y1="20" x2="145" y2="28"/><line x1="155" y1="20" x2="155" y2="26"/>
+        <line x1="165" y1="20" x2="165" y2="28"/><line x1="175" y1="20" x2="175" y2="26"/>
+        <line x1="185" y1="20" x2="185" y2="28"/><line x1="195" y1="20" x2="195" y2="26"/>
+        <line x1="205" y1="20" x2="205" y2="28"/>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<!-- ── Stat Row ─────────────────────────────────────────── -->
+<div class="stat-row">
+  <div class="stat-tile">
+    <div class="st-icon st-icon-primary"><i class="bi bi-file-earmark-text-fill"></i></div>
+    <div class="st-body">
+      <span class="st-value">{{ doc_count }}</span>
+      <span class="st-label">Total Documents</span>
+    </div>
+  </div>
+
+  <div class="stat-tile">
+    <div class="st-icon st-icon-gold"><i class="bi bi-hdd-fill"></i></div>
+    <div class="st-body">
+      <span class="st-value">{{ stor.used_str }}</span>
+      <span class="st-label">of {{ stor.limit_str }} used</span>
+    </div>
+  </div>
+
+  <div class="stat-tile stat-tile-action" onclick="window.location='/users'" role="button" tabindex="0"
+       style="cursor:pointer" title="View all registered users">
+    <div class="st-icon st-icon-neutral"><i class="bi bi-people-fill"></i></div>
+    <div class="st-body">
+      <span class="st-value">{{ user_count }}</span>
+      <span class="st-label">Registered Users</span>
+    </div>
+    <i class="bi bi-arrow-right st-action-arrow"></i>
+  </div>
+
+  <div class="stat-tile stat-tile-action" data-bs-toggle="modal" data-bs-target="#uploadModal"
+       role="button" tabindex="0">
+    <div class="st-icon st-icon-upload"><i class="bi bi-cloud-upload-fill"></i></div>
+    <div class="st-body">
+      <span class="st-value">Upload</span>
+      <span class="st-label">Add new document</span>
+    </div>
+    <i class="bi bi-plus-lg st-action-arrow"></i>
+  </div>
+</div>
+
+<!-- ── Trash Alert ──────────────────────────────────────── -->
+{% if stor.trash_count > 0 %}
+<div class="rb-dashboard-alert">
+  <i class="bi bi-trash3-fill rda-icon"></i>
+  <div class="rda-text">
+    <strong>{{ stor.trash_count }} file{{ 's' if stor.trash_count != 1 }}</strong>
+    ({{ stor.trash_size }}) in the Recycle Bin awaiting permanent deletion.
+  </div>
+  <a href="/recycle-bin" class="rda-link">View Recycle Bin <i class="bi bi-arrow-right ms-1"></i></a>
+</div>
+{% endif %}
+
+<!-- ── Enhanced Storage Panel ───────────────────────────── -->
+<div class="storage-panel" id="storagePanelCard">
+  <div class="storage-panel-header">
+    <div class="sph-title"><i class="bi bi-hdd-stack-fill"></i> Storage Quota — 50 GB Limit</div>
+    <div class="sph-meta">
+      <span><strong class="{{ 'text-danger' if stor.critical else 'text-warning' if stor.warning else '' }}">{{ stor.used_str }}</strong> used</span>
+      <span class="sph-sep">·</span>
+      <span>{{ stor.free_str }} free</span>
+      <span class="sph-sep">·</span>
+      <span>{{ stor.limit_str }} total</span>
+      <span class="sph-sep">·</span>
+      <span><strong>{{ stor.pct }}%</strong> used</span>
+    </div>
+  </div>
+
+  <!-- Segmented progress bar per uploader -->
+  <div class="stor-segmented-track" title="{{ stor.pct }}% used">
+    {% for seg in stor.segments %}
+    <div class="stor-segment seg-{{ loop.index }}"
+         style="width:{{ seg.pct }}%"
+         title="{{ seg.name }}: {{ seg.size_str }}"></div>
+    {% endfor %}
+    <div class="stor-segment seg-free"
+         style="width:{{ [100 - stor.pct, 0]|max }}%"
+         title="Free: {{ stor.free_str }}"></div>
+  </div>
+
+  <!-- Legend -->
+  <div class="stor-seg-legend">
+    {% for seg in stor.segments %}
+    <div class="ssl-item">
+      <span class="ssl-dot seg-dot-{{ loop.index }}"></span>
+      <span class="ssl-name">{{ seg.name }}</span>
+      <span class="ssl-size">{{ seg.size_str }}</span>
+    </div>
+    {% endfor %}
+    <div class="ssl-item">
+      <span class="ssl-dot seg-dot-free"></span>
+      <span class="ssl-name">Available</span>
+      <span class="ssl-size">{{ stor.free_str }}</span>
+    </div>
+  </div>
+
+  <!-- Percentage bar -->
+  <div class="stor-pct-row">
+    <div class="stor-progress-track" style="margin-top:12px">
+      <div class="stor-progress-fill {{ 'is-crit' if stor.critical else 'is-warn' if stor.warning else '' }}"
+           id="storProgressBar"
+           style="width:{{ [stor.pct,100]|min }}%"></div>
+    </div>
+    <div class="sph-legend">
+      <span><strong>{{ stor.pct }}%</strong> of 50 GB used</span>
+      <span>{{ stor.free_str }} available</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Browse by File Type ──────────────────────────────── -->
+<div class="section-card mb-4">
+  <div class="section-card-header">
+    <h2 class="sch-title"><i class="bi bi-grid-3x3-gap-fill"></i> Browse by File Type</h2>
+    <span class="sch-sub">Jump straight to the files you need</span>
+  </div>
+  <div class="filetype-grid">
+    {% for key, group in FILE_TYPE_GROUPS.items() %}
+    <a href="/documents?type={{ key }}" class="filetype-tile">
+      <div class="ft-icon ft-icon-{{ key }}"><i class="bi {{ group.icon }}"></i></div>
+      <div class="ft-body">
+        <span class="ft-name">{{ group.label }}</span>
+        <span class="ft-count">{{ type_counts.get(key,0) }} file{{ 's' if type_counts.get(key,0) != 1 }}</span>
+        {% if type_latest.get(key) %}
+        <span class="ft-latest"><i class="bi bi-clock-history"></i> {{ type_latest[key].upload_date.strftime('%b %d, %Y · %H:%M') }}</span>
+        {% endif %}
+      </div>
+      <i class="bi bi-arrow-right ft-arrow"></i>
+    </a>
+    {% endfor %}
+    <a href="/documents?type=other" class="filetype-tile">
+      <div class="ft-icon ft-icon-other"><i class="bi bi-file-earmark-fill"></i></div>
+      <div class="ft-body">
+        <span class="ft-name">Other Files</span>
+        <span class="ft-count">{{ type_counts.get('other',0) }} file{{ 's' if type_counts.get('other',0) != 1 }}</span>
+        {% if type_latest.get('other') %}
+        <span class="ft-latest"><i class="bi bi-clock-history"></i> {{ type_latest['other'].upload_date.strftime('%b %d, %Y · %H:%M') }}</span>
+        {% endif %}
+      </div>
+      <i class="bi bi-arrow-right ft-arrow"></i>
+    </a>
+    <div class="filetype-tile filetype-tile-create" data-bs-toggle="modal" data-bs-target="#uploadModal" role="button" tabindex="0">
+      <div class="ft-icon ft-icon-create"><i class="bi bi-plus-circle-fill"></i></div>
+      <div class="ft-body">
+        <span class="ft-name">Upload New File</span>
+        <span class="ft-count">Document, sheet, drawing, image, or archive</span>
+      </div>
+      <i class="bi bi-cloud-upload ft-arrow"></i>
+    </div>
+  </div>
+</div>
+
+<!-- ── Pinned Files ──────────────────────────────────────── -->
+{% if pinned %}
+<div class="section-card mb-4">
+  <div class="section-card-header">
+    <h2 class="sch-title"><i class="bi bi-pin-angle-fill"></i> Pinned Files</h2>
+  </div>
+  <div class="pinned-scroll-row">
+    {% for doc in pinned %}
+    <a href="/download/{{ doc.id }}" class="pinned-card" title="{{ doc.original_name }}">
+      <div class="pc-icon-wrap ext-{{ doc.file_ext }}"><i class="bi {{ ext_icon(doc.file_ext) }}"></i></div>
+      <div class="pc-meta">
+        <span class="pc-name">{{ doc.original_name }}</span>
+        <span class="pc-size">{{ doc.file_size | fmt_size }} · {{ doc.uploader.fullname if doc.uploader else '—' }}</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Main Grid ─────────────────────────────────────────── -->
+<div class="dashboard-grid">
+
+  <!-- Recent Documents -->
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2 class="sch-title"><i class="bi bi-clock-history"></i> Recent Documents</h2>
+      <a href="/documents" class="sch-action">View all <i class="bi bi-arrow-right ms-1"></i></a>
+    </div>
+    {% if recent %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Category</th>
+            <th>Uploaded By</th>
+            <th>Size</th>
+            <th>Date</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for doc in recent %}
+          <tr class="{{ 'row-pinned' if doc.is_pinned }}">
+            <td>
+              <div class="file-cell">
+                <div class="file-icon ext-{{ doc.file_ext }}"><i class="bi {{ ext_icon(doc.file_ext) }}"></i></div>
+                <div class="file-meta">
+                  <span class="file-name">{{ doc.original_name }}
+                    {% if doc.is_pinned %}<span class="pin-chip">Pinned</span>{% endif %}
+                  </span>
+                  {% if doc.description %}<span class="file-desc">{{ doc.description }}</span>{% endif %}
+                </div>
+              </div>
+            </td>
+            <td><span class="cat-badge">{{ doc.category }}</span></td>
+            <td>
+              <a href="/users/{{ doc.uploaded_by }}/history" class="uploader-link"
+                 title="View upload history for {{ doc.uploader.fullname if doc.uploader else '—' }}">
+                <div class="uploader-chip">
+                  <span class="uc-avatar">{{ doc.uploader.fullname[0]|upper if doc.uploader else '?' }}</span>
+                  <span class="uc-name">{{ doc.uploader.fullname if doc.uploader else '—' }}</span>
+                </div>
+              </a>
+            </td>
+            <td class="cell-muted">{{ doc.file_size | fmt_size }}</td>
+            <td class="cell-muted" style="white-space:nowrap">
+              {{ doc.upload_date.strftime('%b %d, %Y') }}<br>
+              <span style="font-size:11px">{{ doc.upload_date.strftime('%H:%M') }}</span>
+            </td>
+            <td class="text-end cell-actions">
+              <a href="/download/{{ doc.id }}" class="tbl-btn" title="Download"><i class="bi bi-download"></i></a>
+              <form action="/pin/{{ doc.id }}" method="POST" class="d-inline">
+                <button type="submit" class="tbl-btn {{ 'is-pinned' if doc.is_pinned }}"
+                        title="{{ 'Unpin' if doc.is_pinned else 'Pin' }}">
+                  <i class="bi bi-pin{{ '-fill' if doc.is_pinned }}"></i>
+                </button>
+              </form>
+              {% if doc.uploaded_by == session.user_id or session.get('role') == 'Admin' %}
+              <form action="/delete/{{ doc.id }}" method="POST" class="d-inline"
+                    onsubmit="return confirm('Move to Recycle Bin?')">
+                <button type="submit" class="tbl-btn is-danger" title="Delete"><i class="bi bi-trash3"></i></button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-placeholder">
+      <i class="bi bi-folder2-open"></i>
+      <p>No documents yet.</p>
+      <button class="btn-primary-pro btn-sm-pro" data-bs-toggle="modal" data-bs-target="#uploadModal">
+        <i class="bi bi-upload me-1"></i>Upload first file
+      </button>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Aside: Activity + Top Uploaders -->
+  <div class="dashboard-aside">
+
+    <!-- Activity Log -->
+    <div class="section-card">
+      <div class="section-card-header">
+        <h2 class="sch-title"><i class="bi bi-activity"></i> My Activity</h2>
+      </div>
+      {% if logs %}
+      <ul class="activity-feed">
+        {% for log in logs %}
+        <li class="af-item">
+          <span class="af-dot {{ 'is-upload' if 'Upload' in log.action else 'is-delete' if 'Delet' in log.action else 'is-login' if 'Signed' in log.action else '' }}"></span>
+          <div class="af-body">
+            <span class="af-action">{{ log.action }}</span>
+            {% if log.detail %}<span class="af-detail">{{ log.detail }}</span>{% endif %}
+            <span class="af-time">{{ log.timestamp.strftime('%b %d · %H:%M') }}</span>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty-placeholder small-empty">
+        <i class="bi bi-journal-text"></i><p>No activity yet.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Top Uploaders -->
+    {% if top_uploaders %}
+    <div class="section-card">
+      <div class="section-card-header">
+        <h2 class="sch-title"><i class="bi bi-person-lines-fill"></i> Top Uploaders</h2>
+        <a href="/users" class="sch-action">All users <i class="bi bi-arrow-right ms-1"></i></a>
+      </div>
+      <ul class="top-uploaders-list">
+        {% for row in top_uploaders %}
+        <li class="tul-item">
+          <a href="/users/{{ row.id }}/history" class="tul-link">
+            <div class="tul-avatar">{{ row.fullname[0]|upper }}</div>
+            <div class="tul-body">
+              <span class="tul-name">{{ row.fullname }}</span>
+              <span class="tul-meta">{{ row.cnt }} file{{ 's' if row.cnt != 1 }} · {{ row.total | fmt_size }}</span>
+            </div>
+            <div class="tul-bar-wrap">
+              <div class="tul-bar" style="width:{{ ((row.cnt / doc_count) * 100)|int if doc_count else 0 }}%"></div>
+            </div>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<!-- ── Category Breakdown ────────────────────────────────── -->
+{% if cat_counts %}
+<div class="section-card mt-4">
+  <div class="section-card-header">
+    <h2 class="sch-title"><i class="bi bi-pie-chart-fill"></i> Documents by Category</h2>
+  </div>
+  <div class="cat-breakdown-grid">
+    {% for cat, count in cat_counts.items() %}
+    <a href="/documents?category={{ cat }}" class="cat-breakdown-tile">
+      <span class="cbt-count">{{ count }}</span>
+      <span class="cbt-name">{{ cat }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Live storage bar update via API
+async function refreshStorage() {
+  try {
+    const r = await fetch('/api/storage');
+    const d = await r.json();
+    const bar = document.getElementById('storProgressBar');
+    if (bar) {
+      bar.style.width = Math.min(d.pct, 100) + '%';
+      bar.className = 'stor-progress-fill' +
+        (d.critical ? ' is-crit' : d.warning ? ' is-warn' : '');
+    }
+  } catch(e) {}
+}
+// Refresh storage every 30 seconds
+setInterval(refreshStorage, 30000);
+</script>
+{% endblock %}

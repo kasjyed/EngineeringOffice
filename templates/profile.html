@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}My Profile — Engineering Office{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+{% block breadcrumb %}<span>Home</span> <i class="bi bi-chevron-right"></i> <span>Profile</span>{% endblock %}
+
+{% block content %}
+<div class="profile-layout">
+
+  <!-- ── Left: Account Card ─────────────────────────────── -->
+  <div class="profile-col-left">
+
+    <!-- Avatar / Identity -->
+    <div class="section-card profile-identity-card">
+      <div class="pic-avatar">{{ user.fullname[0] | upper }}</div>
+      <div class="pic-name">{{ user.fullname }}</div>
+      <div class="pic-meta">
+        <span class="pic-role-badge">{{ user.role }}</span>
+        <span class="pic-dept">{{ user.department }}</span>
+      </div>
+      <div class="pic-joined">
+        <i class="bi bi-calendar3 me-1"></i>
+        Joined {{ user.created_at.strftime('%B %Y') }}
+      </div>
+    </div>
+
+    <!-- Edit Form -->
+    <div class="section-card">
+      <div class="section-card-header">
+        <h2 class="sch-title"><i class="bi bi-pencil-square"></i> Edit Account</h2>
+      </div>
+      <form method="POST" class="profile-form">
+
+        <div class="field-block">
+          <label class="field-label">Full name</label>
+          <div class="field-icon-wrap">
+            <i class="bi bi-person field-icon"></i>
+            <input type="text" name="fullname" class="field-input"
+                   value="{{ user.fullname }}" required>
+          </div>
+        </div>
+
+        <div class="field-block">
+          <label class="field-label">Email address</label>
+          <div class="field-icon-wrap">
+            <i class="bi bi-envelope field-icon"></i>
+            <input type="email" class="field-input field-input-locked"
+                   value="{{ user.email }}" disabled>
+          </div>
+          <span class="field-hint">Email address cannot be changed.</span>
+        </div>
+
+        <div class="field-block">
+          <label class="field-label">Department</label>
+          <div class="field-icon-wrap">
+            <i class="bi bi-building field-icon"></i>
+            <input type="text" name="department" class="field-input"
+                   value="{{ user.department }}">
+          </div>
+        </div>
+
+        <div class="field-block">
+          <label class="field-label">Role</label>
+          <div class="field-icon-wrap">
+            <i class="bi bi-shield field-icon"></i>
+            <input type="text" class="field-input field-input-locked"
+                   value="{{ user.role }}" disabled>
+          </div>
+        </div>
+
+        <div class="form-divider-label">Change Password</div>
+
+        <div class="field-block">
+          <label class="field-label">
+            New password
+            <span class="label-optional">leave blank to keep current</span>
+          </label>
+          <div class="field-icon-wrap">
+            <i class="bi bi-lock field-icon"></i>
+            <input type="password" name="new_password" class="field-input"
+                   placeholder="••••••••" minlength="6">
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary-pro w-100">
+          <i class="bi bi-check-lg me-1"></i>Save Changes
+        </button>
+
+      </form>
+    </div>
+
+  </div>
+
+  <!-- ── Right: My Files ────────────────────────────────── -->
+  <div class="profile-col-right">
+    <div class="section-card">
+      <div class="section-card-header">
+        <h2 class="sch-title"><i class="bi bi-files"></i> My Uploaded Files</h2>
+        <span class="sch-badge">{{ my_docs|length }}</span>
+      </div>
+
+      {% if my_docs %}
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Category</th>
+              <th>Size</th>
+              <th>Date</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for doc in my_docs %}
+            <tr>
+              <td>
+                <div class="file-cell">
+                  <div class="file-icon ext-{{ doc.file_ext }}">
+                    <i class="bi {{ ext_icon(doc.file_ext) }}"></i>
+                  </div>
+                  <div class="file-meta">
+                    <span class="file-name">{{ doc.original_name }}</span>
+                  </div>
+                </div>
+              </td>
+              <td><span class="cat-badge">{{ doc.category }}</span></td>
+              <td class="cell-muted">{{ doc.file_size | fmt_size }}</td>
+              <td class="cell-muted">{{ doc.upload_date.strftime('%b %d, %Y') }}</td>
+              <td class="text-end cell-actions">
+                <a href="/download/{{ doc.id }}" class="tbl-btn" title="Download">
+                  <i class="bi bi-download"></i>
+                </a>
+                <form action="/delete/{{ doc.id }}" method="POST" class="d-inline"
+                      onsubmit="return confirm('Delete this file?')">
+                  <button type="submit" class="tbl-btn is-danger" title="Delete">
+                    <i class="bi bi-trash3"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% else %}
+      <div class="empty-placeholder">
+        <i class="bi bi-cloud-upload"></i>
+        <p>You haven't uploaded any files yet.</p>
+        <button class="btn-primary-pro btn-sm-pro" data-bs-toggle="modal" data-bs-target="#uploadModal">
+          <i class="bi bi-upload me-1"></i>Upload a file
+        </button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

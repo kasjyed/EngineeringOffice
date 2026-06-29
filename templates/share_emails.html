@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Email Sharing Dashboard — Engineering Office{% endblock %}
+{% block page_title %}Email Sharing Dashboard{% endblock %}
+{% block breadcrumb %}<span>Home</span> <i class="bi bi-chevron-right"></i> <span>Email Dashboard</span>{% endblock %}
+
+{% block content %}
+
+<!-- ── SMTP Warning ───────────────────────────────────────── -->
+{% if not smtp_configured %}
+<div class="alert alert-warning mb-4" style="border-radius:10px;font-size:13px;display:flex;align-items:flex-start;gap:10px;">
+  <i class="bi bi-exclamation-triangle-fill" style="font-size:18px;flex-shrink:0;margin-top:2px;"></i>
+  <div>
+    <strong>SMTP not configured.</strong> Email sending is disabled.
+    Set these environment variables before starting Flask:<br>
+    <code>SMTP_HOST</code> &nbsp;<code>SMTP_PORT</code> &nbsp;<code>SMTP_USER</code>
+    &nbsp;<code>SMTP_PASS</code> &nbsp;<code>SMTP_FROM</code> &nbsp;<code>APP_BASE_URL</code>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Stats Bar ──────────────────────────────────────────── -->
+<div class="rb-banner share-hero-banner" style="margin-bottom:20px;">
+  <div class="rb-banner-left">
+    <div class="rb-banner-icon share-hero-icon"><i class="bi bi-envelope-check-fill"></i></div>
+    <div>
+      <p class="rb-banner-title">All Outgoing Share Emails</p>
+      <p class="rb-banner-sub">Track delivery, open, and download status for every email you've sent.</p>
+    </div>
+  </div>
+  <div class="rb-banner-stats">
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ stats.total }}</span>
+      <span class="rb-stat-lbl">Sent</span>
+    </div>
+    <div class="rb-stat-divider"></div>
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ stats.delivered }}</span>
+      <span class="rb-stat-lbl">Delivered</span>
+    </div>
+    <div class="rb-stat-divider"></div>
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ stats.opened }}</span>
+      <span class="rb-stat-lbl">Opened</span>
+    </div>
+    <div class="rb-stat-divider"></div>
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ stats.downloaded }}</span>
+      <span class="rb-stat-lbl">Downloaded</span>
+    </div>
+    {% if stats.failed %}
+    <div class="rb-stat-divider"></div>
+    <div class="rb-stat">
+      <span class="rb-stat-val" style="color:var(--danger);">{{ stats.failed }}</span>
+      <span class="rb-stat-lbl">Failed</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Funnel Visual ──────────────────────────────────────── -->
+{% if stats.total > 0 %}
+<div class="section-card" style="margin-bottom:20px;padding:20px 24px;">
+  <div class="section-card-header" style="margin-bottom:12px;">
+    <h2 class="sch-title"><i class="bi bi-bar-chart-fill"></i> Engagement Funnel</h2>
+  </div>
+  <div style="display:flex;gap:0;align-items:stretch;">
+    {% set stages = [
+      ('Sent',       stats.total,      '#4361ee', 'bi-send-fill'),
+      ('Delivered',  stats.delivered,  '#0ea5e9', 'bi-check2-all'),
+      ('Opened',     stats.opened,     '#10b981', 'bi-eye-fill'),
+      ('Downloaded', stats.downloaded, '#f59e0b', 'bi-download'),
+    ] %}
+    {% for label, val, color, icon in stages %}
+    {% set pct = ((val / stats.total) * 100)|round|int if stats.total else 0 %}
+    <div style="flex:1;text-align:center;padding:0 6px;">
+      <div style="position:relative;height:80px;background:var(--surface2);border-radius:8px;overflow:hidden;margin-bottom:8px;">
+        <div style="position:absolute;bottom:0;left:0;right:0;height:{{ pct }}%;background:{{ color }};opacity:.85;transition:height .4s ease;border-radius:0 0 8px 8px;"></div>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1;">
+          <span style="font-size:20px;font-weight:900;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.4);">{{ val }}</span>
+        </div>
+      </div>
+      <span style="font-size:11px;font-weight:600;color:var(--ink500);text-transform:uppercase;letter-spacing:.5px;">
+        <i class="bi {{ icon }} me-1"></i>{{ label }}
+      </span>
+      <br><span style="font-size:13px;font-weight:700;color:{{ color }};">{{ pct }}%</span>
+    </div>
+    {% if not loop.last %}
+    <div style="display:flex;align-items:center;padding:0 2px;color:var(--ink400);font-size:18px;">
+      <i class="bi bi-chevron-right"></i>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Transactions Table ─────────────────────────────────── -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="sch-title"><i class="bi bi-table"></i> All Email Transactions</h2>
+    <span class="sch-badge">{{ txns|length }}</span>
+  </div>
+
+  {% if txns %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Recipient</th>
+          <th>File</th>
+          <th>Sent</th>
+          <th>Status</th>
+          <th>Opened</th>
+          <th>Downloaded</th>
+          <th>Link</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in txns %}
+        {% set icon, cls = t.status_icon %}
+        {% set doc = t.link.document if t.link else None %}
+        <tr>
+          <td>
+            <div class="file-cell">
+              <span class="uc-avatar uc-avatar-lg" style="font-size:11px;">{{ t.recipient_email[0]|upper }}</span>
+              <span class="file-name">{{ t.recipient_email }}</span>
+            </div>
+          </td>
+          <td>
+            {% if doc %}
+            <div class="file-cell">
+              <div class="file-icon ext-{{ doc.file_ext }}" style="width:26px;height:26px;font-size:12px;border-radius:5px;flex-shrink:0;">
+                <i class="bi {{ ext_icon(doc.file_ext) }}"></i>
+              </div>
+              <span class="file-name" style="font-size:12px;">{{ doc.original_name }}</span>
+            </div>
+            {% else %}
+            <span class="cell-muted" style="font-size:12px;">File deleted</span>
+            {% endif %}
+          </td>
+          <td class="cell-muted" style="white-space:nowrap;font-size:12px;">
+            {{ t.sent_at.strftime('%b %d, %Y') }}<br>
+            {{ t.sent_at.strftime('%H:%M') }}
+          </td>
+          <td>
+            <span class="status-pill {{ 'status-active' if t.status in ('delivered','opened','downloaded') else 'status-inactive' }}"
+                  style="gap:5px;font-size:11px;">
+              <i class="bi {{ icon }} {{ cls }}" style="font-size:10px;"></i>
+              {{ t.status|capitalize }}
+            </span>
+          </td>
+          <td class="cell-muted" style="font-size:12px;white-space:nowrap;">
+            {{ t.opened_at.strftime('%b %d · %H:%M') if t.opened_at else '—' }}
+          </td>
+          <td class="cell-muted" style="font-size:12px;white-space:nowrap;">
+            {{ t.downloaded_at.strftime('%b %d · %H:%M') if t.downloaded_at else '—' }}
+          </td>
+          <td>
+            {% if t.link %}
+            <a href="/share/{{ t.link.id }}/activity" class="tbl-btn" title="View link activity">
+              <i class="bi bi-activity"></i>
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-placeholder large-empty">
+    <i class="bi bi-envelope-open"></i>
+    <h3>No emails sent yet</h3>
+    <p>Go to <a href="/shared-with-me">My Share Links</a> and use the email button on any active link.</p>
+    <a href="/shared-with-me" class="btn-primary-pro btn-sm-pro">
+      <i class="bi bi-share me-1"></i>My Share Links
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}My Share Links — Engineering Office{% endblock %}
+{% block page_title %}My Share Links{% endblock %}
+{% block breadcrumb %}<span>Home</span> <i class="bi bi-chevron-right"></i> <span>Share Links</span>{% endblock %}
+
+{% block topbar_right %}
+<a href="/share-emails" class="btn-ghost">
+  <i class="bi bi-envelope-check me-1"></i>Email Dashboard
+</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="rb-banner share-hero-banner">
+  <div class="rb-banner-left">
+    <div class="rb-banner-icon share-hero-icon"><i class="bi bi-share-fill"></i></div>
+    <div>
+      <p class="rb-banner-title">My Share Links</p>
+      <p class="rb-banner-sub">
+        <strong>Public</strong> — anyone with the link.
+        <strong>Password</strong> — requires a password.
+        <strong>Email restricted</strong> — verifies recipient's email.
+      </p>
+    </div>
+  </div>
+  <div class="rb-banner-stats">
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ links|selectattr('visibility','equalto','public')|list|length }}</span>
+      <span class="rb-stat-lbl">Public</span>
+    </div>
+    <div class="rb-stat-divider"></div>
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ links|selectattr('visibility','equalto','private')|list|length }}</span>
+      <span class="rb-stat-lbl">Password</span>
+    </div>
+    <div class="rb-stat-divider"></div>
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ links|selectattr('visibility','equalto','email')|list|length }}</span>
+      <span class="rb-stat-lbl">Email</span>
+    </div>
+  </div>
+</div>
+
+{% if links %}
+<div class="share-links-list">
+  {% for link in links %}
+  <div class="share-link-card {{ 'is-inactive' if not link.is_usable }}">
+
+    <div class="slc-top">
+      <div class="slc-file-info">
+        {% if link.document %}
+        <div class="file-icon ext-{{ link.document.file_ext }}">
+          <i class="bi {{ ext_icon(link.document.file_ext) }}"></i>
+        </div>
+        <div class="file-meta">
+          <span class="file-name">{{ link.document.original_name }}</span>
+          <span class="file-desc">
+            Created {{ link.created_at.strftime('%b %d, %Y · %H:%M') }}
+            {% if link.expires_at %}
+              · Expires {{ link.expires_at.strftime('%b %d, %Y') }}
+            {% else %}
+              · Never expires
+            {% endif %}
+            {% if link.download_limit %}
+              · <i class="bi bi-download me-1"></i>{{ link.download_count or 0 }}/{{ link.download_limit }} downloads
+            {% endif %}
+          </span>
+        </div>
+        {% else %}
+        <div class="file-icon"><i class="bi bi-file-earmark-x"></i></div>
+        <div class="file-meta">
+          <span class="file-name cell-muted">Original file was deleted</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="slc-badges">
+        {% if link.visibility == 'public' %}
+        <span class="share-badge share-public"><i class="bi bi-globe2"></i> Anyone with the link</span>
+        {% elif link.visibility == 'private' %}
+        <span class="share-badge share-private"><i class="bi bi-lock-fill"></i> Password protected</span>
+        {% else %}
+        <span class="share-badge share-email"><i class="bi bi-envelope-check-fill"></i> Email restricted</span>
+        {% endif %}
+
+        {% if not link.is_active %}
+        <span class="status-pill status-inactive"><i class="bi bi-circle-fill"></i> Revoked</span>
+        {% elif link.is_expired %}
+        <span class="status-pill status-inactive"><i class="bi bi-circle-fill"></i> Expired</span>
+        {% elif link.download_limit_reached %}
+        <span class="status-pill status-inactive"><i class="bi bi-circle-fill"></i> Limit reached</span>
+        {% else %}
+        <span class="status-pill status-active"><i class="bi bi-circle-fill"></i> Active</span>
+        {% endif %}
+
+        <span class="slc-views"><i class="bi bi-eye me-1"></i>{{ link.view_count }}</span>
+        <span class="slc-views"><i class="bi bi-download me-1"></i>{{ link.download_count or 0 }}</span>
+      </div>
+    </div>
+
+    <!-- Email list for email-restricted links -->
+    {% if link.visibility == 'email' and link.email_list %}
+    <div class="slc-email-list">
+      <span class="sel-label"><i class="bi bi-people-fill me-1"></i>Authorised emails:</span>
+      {% for email in link.email_list %}
+      <span class="sel-chip"><i class="bi bi-envelope-fill"></i>{{ email }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Note -->
+    {% if link.note %}
+    <div style="margin:8px 0 2px;padding:8px 14px;background:var(--surface2);border-radius:7px;font-size:13px;color:var(--ink600);">
+      <i class="bi bi-chat-square-quote me-1 text-muted"></i>{{ link.note }}
+    </div>
+    {% endif %}
+
+    {% if link.is_usable %}
+    <!-- Link row -->
+    <div class="slc-link-row">
+      <div class="slc-link-box">
+        <i class="bi bi-link-45deg slc-link-icon"></i>
+        <input type="text" class="slc-link-input" id="linkInput{{ link.id }}"
+               value="{{ request.host_url }}s/{{ link.token }}"
+               readonly onclick="this.select()">
+      </div>
+      <button type="button" class="btn-primary-pro btn-sm-pro" id="copyBtn{{ link.id }}"
+              onclick="copyShareLink({{ link.id }}, '{{ request.host_url }}s/{{ link.token }}')">
+        <i class="bi bi-clipboard me-1"></i>Copy
+      </button>
+      <a href="{{ url_for('view_shared', token=link.token) }}" target="_blank"
+         class="btn-ghost btn-sm-pro" title="Open in new tab">
+        <i class="bi bi-box-arrow-up-right"></i>
+      </a>
+      <!-- Activity -->
+      <a href="/share/{{ link.id }}/activity" class="btn-ghost btn-sm-pro" title="View activity & send emails">
+        <i class="bi bi-activity"></i>
+      </a>
+      <!-- Quick email send toggle -->
+      <button type="button" class="btn-ghost btn-sm-pro" title="Send via email"
+              onclick="toggleEmailPanel({{ link.id }})">
+        <i class="bi bi-send"></i>
+      </button>
+      <form action="/share/{{ link.id }}/revoke" method="POST" class="d-inline"
+            onsubmit="return confirm('Revoke this share link? It will stop working immediately.')">
+        <button type="submit" class="tbl-btn is-danger" title="Revoke link">
+          <i class="bi bi-x-circle"></i>
+        </button>
+      </form>
+    </div>
+
+    <!-- Inline email send panel (hidden by default) -->
+    <div id="emailPanel{{ link.id }}" style="display:none;margin-top:10px;padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
+      <form action="/share/{{ link.id }}/send-email" method="POST">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="flex:2;min-width:180px;">
+            <label class="field-label" style="font-size:11px;">Recipient email(s)</label>
+            <input type="text" name="emails" class="field-input" style="height:34px;font-size:13px;"
+                   placeholder="email@example.com, another@example.com" required>
+          </div>
+          <div style="flex:2;min-width:160px;">
+            <label class="field-label" style="font-size:11px;">Message (optional)</label>
+            <input type="text" name="note" class="field-input" style="height:34px;font-size:13px;"
+                   placeholder="e.g. Please review by Friday">
+          </div>
+          <button type="submit" class="btn-primary-pro btn-sm-pro">
+            <i class="bi bi-send me-1"></i>Send
+          </button>
+          <button type="button" class="btn-ghost btn-sm-pro"
+                  onclick="toggleEmailPanel({{ link.id }})">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    {% else %}
+    <div class="slc-link-row">
+      <span class="cell-muted" style="font-size:12.5px;">
+        <i class="bi bi-info-circle me-1"></i>This link is no longer active.
+      </span>
+      <a href="/share/{{ link.id }}/activity" class="btn-ghost btn-sm-pro ms-auto" title="View activity">
+        <i class="bi bi-activity me-1"></i>Activity
+      </a>
+    </div>
+    {% endif %}
+
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="section-card">
+  <div class="empty-placeholder large-empty">
+    <i class="bi bi-share"></i>
+    <h3>No share links yet</h3>
+    <p>Go to <a href="/documents">Documents</a> and click the share icon on any file you own.</p>
+    <a href="/documents" class="btn-primary-pro btn-sm-pro">
+      <i class="bi bi-folder2-open me-1"></i>Go to Documents
+    </a>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyShareLink(linkId, url) {
+  const btn   = document.getElementById('copyBtn'   + linkId);
+  const input = document.getElementById('linkInput' + linkId);
+  function showCopied() {
+    const original = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Copied!';
+    btn.classList.add('btn-copied');
+    setTimeout(() => { btn.innerHTML = original; btn.classList.remove('btn-copied'); }, 1800);
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(url).then(showCopied).catch(fallback);
+  } else { fallback(); }
+  function fallback() {
+    input.removeAttribute('readonly');
+    input.select(); input.setSelectionRange(0, 99999);
+    try { document.execCommand('copy'); showCopied(); } catch(e) {}
+    input.setAttribute('readonly', true);
+  }
+}
+
+function toggleEmailPanel(linkId) {
+  const panel = document.getElementById('emailPanel' + linkId);
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  if (panel.style.display === 'block') panel.querySelector('input[name="emails"]').focus();
+}
+</script>
+{% endblock %}

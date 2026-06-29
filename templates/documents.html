@@ -1,0 +1,863 @@
+{% extends "base.html" %}
+{% block title %}Documents — Engineering Office{% endblock %}
+{% block page_title %}All Documents{% endblock %}
+{% block breadcrumb %}<span>Home</span> <i class="bi bi-chevron-right"></i> <span>Documents</span>{% endblock %}
+
+{% block topbar_right %}
+<span class="topbar-stor-chip"><i class="bi bi-hdd me-1"></i>{{ stor.free_str }} free</span>
+<button class="tbl-btn" id="toggleViewBtn" onclick="toggleView()" title="Toggle view">
+  <i class="bi bi-layout-split" id="toggleViewIcon"></i>
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Search & Filter ─────────────────────────────────────── -->
+<form method="GET" action="/documents" class="search-filter-bar" id="searchForm">
+  <div class="sfb-inner">
+    <div class="sfb-search">
+      <i class="bi bi-search sfb-search-icon"></i>
+      <input type="text" name="q" class="sfb-input"
+             placeholder="Search by name, description, or tags…"
+             value="{{ q }}" id="searchInput">
+    </div>
+    <div class="sfb-select-wrap">
+      <select name="category" class="sfb-select">
+        <option value="">All Categories</option>
+        {% for cat in categories %}
+        <option value="{{ cat }}" {{ 'selected' if selected_cat == cat }}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if all_uploaders|length > 1 %}
+    <div class="sfb-select-wrap">
+      <select name="uploader" class="sfb-select">
+        <option value="">All Uploaders</option>
+        {% for u in all_uploaders %}
+        <option value="{{ u.id }}" {{ 'selected' if uploader_filter == u.id|string }}>{{ u.fullname }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <button type="submit" class="btn-primary-pro"><i class="bi bi-search me-1"></i>Search</button>
+    {% if q or selected_cat or uploader_filter %}
+    <a href="/documents" class="btn-ghost" title="Clear filters"><i class="bi bi-x-lg"></i></a>
+    {% endif %}
+  </div>
+</form>
+
+<!-- ── Toolbar ──────────────────────────────────────────────── -->
+<div class="docs-toolbar">
+  <span class="docs-count">
+    <strong>{{ docs|length }}</strong> document{{ 's' if docs|length != 1 }}
+    {% if q or selected_cat or type_filter or uploader_filter %}&nbsp;— filtered{% endif %}
+  </span>
+  <div style="display:flex;gap:6px;margin-left:auto;">
+    <button class="tbl-btn fe-view-btn is-active" id="btnExplorer" onclick="setViewMode('explorer')" title="Explorer view">
+      <i class="bi bi-layout-split"></i>
+    </button>
+    <button class="tbl-btn fe-view-btn" id="btnTable" onclick="setViewMode('table')" title="Table view">
+      <i class="bi bi-table"></i>
+    </button>
+    <button class="tbl-btn fe-view-btn" id="btnGrid" onclick="setViewMode('grid')" title="Grid view">
+      <i class="bi bi-grid-3x3-gap-fill"></i>
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     EXPLORER VIEW (split pane)
+     ════════════════════════════════════════════════════════════ -->
+<div id="explorerView" class="fe-shell">
+
+  <!-- ── Left: File List ──────────────────────────────────── -->
+  <div class="fe-sidebar" id="feSidebar">
+
+    <!-- Type filters -->
+    <div class="fe-type-filters">
+      <button class="fe-type-btn is-active" onclick="filterType(this,'all')">
+        <i class="bi bi-files"></i> All
+      </button>
+      <button class="fe-type-btn" onclick="filterType(this,'image')">
+        <i class="bi bi-image"></i> Images
+      </button>
+      <button class="fe-type-btn" onclick="filterType(this,'pdf')">
+        <i class="bi bi-file-earmark-pdf"></i> PDF
+      </button>
+      <button class="fe-type-btn" onclick="filterType(this,'word')">
+        <i class="bi bi-file-earmark-word"></i> Word
+      </button>
+      <button class="fe-type-btn" onclick="filterType(this,'excel')">
+        <i class="bi bi-file-earmark-excel"></i> Excel
+      </button>
+      <button class="fe-type-btn" onclick="filterType(this,'ppt')">
+        <i class="bi bi-file-earmark-ppt"></i> PPT
+      </button>
+      <button class="fe-type-btn" onclick="filterType(this,'text')">
+        <i class="bi bi-file-earmark-text"></i> Text
+      </button>
+      <button class="fe-type-btn" onclick="filterType(this,'cad')">
+        <i class="bi bi-rulers"></i> CAD
+      </button>
+      <button class="fe-type-btn" onclick="filterType(this,'archive')">
+        <i class="bi bi-file-earmark-zip"></i> Archive
+      </button>
+    </div>
+
+    <!-- File list -->
+    <div class="fe-file-list" id="feFileList">
+      {% if docs %}
+        {% for doc in docs %}
+        <div class="fe-file-item {{ 'is-pinned' if doc.is_pinned }}"
+             id="feItem{{ doc.id }}"
+             data-id="{{ doc.id }}"
+             data-name="{{ doc.original_name }}"
+             data-ext="{{ doc.file_ext }}"
+             data-type="{{ doc.file_ext }}"
+             data-size="{{ doc.file_size | fmt_size }}"
+             data-cat="{{ doc.category }}"
+             data-desc="{{ doc.description }}"
+             data-tags="{{ doc.tag_list | join(',') }}"
+             data-uploader="{{ doc.uploader.fullname if doc.uploader else '—' }}"
+             data-date="{{ doc.upload_date.strftime('%b %d, %Y · %H:%M') }}"
+             data-pinned="{{ 'true' if doc.is_pinned else 'false' }}"
+             data-owner="{{ doc.uploaded_by }}"
+             onclick="selectFile({{ doc.id }})">
+          <div class="fe-file-icon ext-{{ doc.file_ext }}">
+            <i class="bi {{ ext_icon(doc.file_ext) }}"></i>
+          </div>
+          <div class="fe-file-info">
+            <span class="fe-file-name">
+              {{ doc.original_name }}
+              {% if doc.is_pinned %}<span class="pin-chip" style="font-size:9px;padding:1px 5px;">Pinned</span>{% endif %}
+            </span>
+            <span class="fe-file-meta">{{ doc.file_size | fmt_size }} · {{ doc.category }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="fe-empty">
+          <i class="bi bi-folder2-open"></i>
+          <p>No documents found</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Resize handle ──────────────────────────────────────── -->
+  <div class="fe-resize-handle" id="feResizeHandle"></div>
+
+  <!-- ── Right: Preview Panel ──────────────────────────────── -->
+  <div class="fe-preview" id="fePreview">
+
+    <!-- Empty state -->
+    <div class="fe-preview-empty" id="fePreviewEmpty">
+      <div class="fe-preview-empty-inner">
+        <div class="fe-preview-empty-icon">
+          <i class="bi bi-layout-split"></i>
+        </div>
+        <h3>Select a file to preview</h3>
+        <p>Click any file on the left to view its details and preview here.</p>
+      </div>
+    </div>
+
+    <!-- Preview content (hidden until file selected) -->
+    <div class="fe-preview-content" id="fePreviewContent" style="display:none;">
+
+      <!-- Preview header -->
+      <div class="fe-preview-header" id="fePreviewHeader">
+        <div class="fe-ph-left">
+          <div class="fe-ph-icon" id="fePhIcon"></div>
+          <div>
+            <div class="fe-ph-name" id="fePhName"></div>
+            <div class="fe-ph-meta" id="fePhMeta"></div>
+          </div>
+        </div>
+        <div class="fe-ph-actions" id="fePhActions"></div>
+      </div>
+
+      <!-- Preview area -->
+      <div class="fe-preview-area" id="fePreviewArea">
+        <!-- filled by JS -->
+      </div>
+
+      <!-- File details -->
+      <div class="fe-details-panel" id="feDetailsPanel">
+        <div class="fe-details-grid" id="feDetailsGrid"></div>
+        <div class="fe-details-tags" id="feDetailsTags"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     TABLE VIEW (original)
+     ════════════════════════════════════════════════════════════ -->
+<div id="tableView" style="display:none;">
+  <div class="section-card">
+    {% if docs %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width:28%">File</th>
+            <th>Category</th>
+            <th>Tags</th>
+            <th>Size</th>
+            <th>Uploaded</th>
+            <th>Uploaded By</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for doc in docs %}
+          <tr class="{{ 'row-pinned' if doc.is_pinned }}">
+            <td>
+              <div class="file-cell" style="cursor:pointer;" onclick="setViewMode('explorer');selectFile({{ doc.id }})">
+                <div class="file-icon ext-{{ doc.file_ext }}">
+                  <i class="bi {{ ext_icon(doc.file_ext) }}"></i>
+                </div>
+                <div class="file-meta">
+                  <span class="file-name">
+                    {{ doc.original_name }}
+                    {% if doc.is_pinned %}<span class="pin-chip">Pinned</span>{% endif %}
+                  </span>
+                  {% if doc.description %}
+                  <span class="file-desc">{{ doc.description }}</span>
+                  {% endif %}
+                </div>
+              </div>
+            </td>
+            <td><span class="cat-badge">{{ doc.category }}</span></td>
+            <td>{% for tag in doc.tag_list[:3] %}<span class="tag-chip">{{ tag }}</span>{% endfor %}</td>
+            <td class="cell-muted">{{ doc.file_size | fmt_size }}</td>
+            <td class="cell-muted" style="white-space:nowrap">
+              {{ doc.upload_date.strftime('%b %d, %Y') }}<br>
+              <span style="font-size:11px">{{ doc.upload_date.strftime('%H:%M') }}</span>
+            </td>
+            <td>
+              <a href="/documents?uploader={{ doc.uploaded_by }}" class="uploader-link">
+                <div class="uploader-chip">
+                  <span class="uc-avatar">{{ doc.uploader.fullname[0]|upper if doc.uploader else '?' }}</span>
+                  <span class="uc-name">{{ doc.uploader.fullname if doc.uploader else '—' }}</span>
+                </div>
+              </a>
+            </td>
+            <td class="text-end cell-actions">
+              <a href="/download/{{ doc.id }}" class="tbl-btn" title="Download"><i class="bi bi-download"></i></a>
+              {% if doc.uploaded_by == session.user_id or session.get('role') == 'Admin' %}
+              <button type="button" class="tbl-btn" title="Share"
+                      data-bs-toggle="modal" data-bs-target="#shareModal{{ doc.id }}">
+                <i class="bi bi-share"></i>
+              </button>
+              {% endif %}
+              <form action="/pin/{{ doc.id }}" method="POST" class="d-inline">
+                <button type="submit" class="tbl-btn {{ 'is-pinned' if doc.is_pinned }}"
+                        title="{{ 'Unpin' if doc.is_pinned else 'Pin' }}">
+                  <i class="bi bi-pin{{ '-fill' if doc.is_pinned }}"></i>
+                </button>
+              </form>
+              {% if doc.uploaded_by == session.user_id or session.get('role') == 'Admin' %}
+              <form action="/delete/{{ doc.id }}" method="POST" class="d-inline"
+                    onsubmit="return confirm('Move \'{{ doc.original_name }}\' to Recycle Bin?')">
+                <button type="submit" class="tbl-btn is-danger" title="Delete"><i class="bi bi-trash3"></i></button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-placeholder large-empty">
+      <i class="bi bi-folder2-open" style="font-size:48px;color:var(--ink300);"></i>
+      <h3>No documents found</h3>
+      <p>{% if q or selected_cat %}No results match your search. <a href="/documents">Clear filters</a>{% else %}No documents uploaded yet.{% endif %}</p>
+      <button class="btn-primary-pro" data-bs-toggle="modal" data-bs-target="#uploadModal">
+        <i class="bi bi-upload me-1"></i>Upload First File
+      </button>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     GRID VIEW
+     ════════════════════════════════════════════════════════════ -->
+<div id="gridView" style="display:none;">
+  <div class="fe-grid-wrap">
+    {% for doc in docs %}
+    <div class="fe-grid-card" onclick="setViewMode('explorer');selectFile({{ doc.id }})">
+      <div class="fe-grid-thumb ext-{{ doc.file_ext }}">
+        <i class="bi {{ ext_icon(doc.file_ext) }}"></i>
+      </div>
+      <div class="fe-grid-name">{{ doc.original_name }}</div>
+      <div class="fe-grid-meta">{{ doc.file_size | fmt_size }} · {{ doc.category }}</div>
+      <div class="fe-grid-actions" onclick="event.stopPropagation()">
+        <a href="/download/{{ doc.id }}" class="tbl-btn" title="Download"><i class="bi bi-download"></i></a>
+        {% if doc.uploaded_by == session.user_id or session.get('role') == 'Admin' %}
+        <button type="button" class="tbl-btn" title="Share"
+                data-bs-toggle="modal" data-bs-target="#shareModal{{ doc.id }}">
+          <i class="bi bi-share"></i>
+        </button>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SHARE MODALS
+     ═══════════════════════════════════════════════════════════ -->
+{% for doc in docs %}
+{% if doc.uploaded_by == session.user_id or session.get('role') == 'Admin' %}
+<div class="modal fade" id="shareModal{{ doc.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-share">
+    <div class="modal-content upload-modal-content">
+      <div class="upload-modal-header">
+        <div class="umh-icon"><i class="bi bi-share-fill"></i></div>
+        <div>
+          <h5 class="umh-title">Share "{{ doc.original_name }}"</h5>
+          <p class="umh-sub">Choose who can access this file via link</p>
+        </div>
+        <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal"></button>
+      </div>
+      <form action="/share/{{ doc.id }}" method="POST"
+            id="shareForm{{ doc.id }}"
+            onsubmit="return validateShareForm({{ doc.id }})">
+        <div class="modal-body upload-modal-body">
+          <label class="form-label-pro mb-2">Who can access this link?</label>
+          <div class="share-visibility-toggle share-visibility-3col">
+            <label class="svt-option">
+              <input type="radio" name="visibility" value="public" checked
+                     onchange="onVisChange({{ doc.id }}, 'public')">
+              <span class="svt-card">
+                <i class="bi bi-globe2"></i>
+                <strong>Anyone with the link</strong>
+                <small>Opens directly, no verification needed</small>
+              </span>
+            </label>
+            <label class="svt-option">
+              <input type="radio" name="visibility" value="private"
+                     onchange="onVisChange({{ doc.id }}, 'private')">
+              <span class="svt-card">
+                <i class="bi bi-lock-fill"></i>
+                <strong>Password protected</strong>
+                <small>Recipient must enter a password</small>
+              </span>
+            </label>
+            <label class="svt-option">
+              <input type="radio" name="visibility" value="email"
+                     onchange="onVisChange({{ doc.id }}, 'email')">
+              <span class="svt-card">
+                <i class="bi bi-envelope-check-fill"></i>
+                <strong>Specific emails only</strong>
+                <small>Only listed email addresses can access</small>
+              </span>
+            </label>
+          </div>
+
+          <div id="pwSection{{ doc.id }}" style="display:none;margin-top:16px;">
+            <label class="form-label-pro">Password <span class="label-optional" style="color:var(--danger)">required</span></label>
+            <div class="field-icon-wrap">
+              <i class="bi bi-lock field-icon"></i>
+              <input type="password" name="password" id="sharePw{{ doc.id }}"
+                     class="field-input" style="padding-left:36px;"
+                     placeholder="Set a password for this link" autocomplete="new-password">
+              <button type="button" class="field-eye-btn"
+                      onclick="togglePwEye('sharePw{{ doc.id }}','sharePwEye{{ doc.id }}')" aria-label="Show password">
+                <i class="bi bi-eye" id="sharePwEye{{ doc.id }}"></i>
+              </button>
+            </div>
+            <p id="pwErr{{ doc.id }}" class="field-feedback is-error" style="display:none;">
+              <i class="bi bi-x-circle-fill"></i> A password is required.
+            </p>
+          </div>
+
+          <div id="emailSection{{ doc.id }}" style="display:none;margin-top:16px;">
+            <label class="form-label-pro">Allowed email addresses <span class="label-optional" style="color:var(--danger)">required</span></label>
+            <p style="font-size:12px;color:var(--ink500);margin-bottom:8px;"><i class="bi bi-info-circle me-1"></i>Separate multiple emails with commas or press Enter after each one.</p>
+            <div class="email-tag-box" id="emailTagBox{{ doc.id }}"
+                 onclick="document.getElementById('emailRaw{{ doc.id }}').focus()">
+              <div class="email-tags" id="emailTags{{ doc.id }}"></div>
+              <input type="text" id="emailRaw{{ doc.id }}" class="email-tag-input"
+                     placeholder="name@example.com" autocomplete="off"
+                     onkeydown="handleEmailKey(event, {{ doc.id }})"
+                     onblur="flushEmailInput({{ doc.id }})">
+            </div>
+            <input type="hidden" name="allowed_emails" id="emailHidden{{ doc.id }}">
+            <p id="emailErr{{ doc.id }}" class="field-feedback is-error" style="display:none;">
+              <i class="bi bi-x-circle-fill"></i> Please add at least one valid email address.
+            </p>
+          </div>
+
+          <div class="mt-3">
+            <label class="form-label-pro">Link Expiry</label>
+            <select name="expiry" class="form-control-pro" id="expirySelect{{ doc.id }}"
+                    onchange="onExpiryChange({{ doc.id }}, this.value)">
+              <option value="never">Never expires</option>
+              <option value="1d">1 day</option>
+              <option value="7d" selected>7 days</option>
+              <option value="30d">30 days</option>
+              <option value="custom">Custom date…</option>
+            </select>
+            <div id="customExpiry{{ doc.id }}" style="display:none;margin-top:8px;">
+              <input type="date" name="expiry_date" class="form-control-pro">
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <label class="form-label-pro">Download Limit <span class="label-optional">leave blank for unlimited</span></label>
+            <div class="field-icon-wrap">
+              <i class="bi bi-download field-icon"></i>
+              <input type="number" name="download_limit" class="field-input" placeholder="e.g. 5" min="1" max="9999" style="padding-left:36px;">
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <label class="form-label-pro">Note to recipient <span class="label-optional">optional</span></label>
+            <textarea name="note" class="form-control-pro" rows="2" placeholder="e.g. Please review and provide feedback by Friday."></textarea>
+          </div>
+
+          <div class="mt-3" id="sendEmailSection{{ doc.id }}">
+            <div style="background:var(--m050);border:1px solid var(--m200);border-radius:8px;padding:14px 16px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                <input type="checkbox" name="send_email_now" value="1"
+                       id="sendNow{{ doc.id }}" class="form-check-input"
+                       onchange="toggleNotifyEmails({{ doc.id }}, this.checked)">
+                <label for="sendNow{{ doc.id }}" class="form-label-pro" style="margin:0;cursor:pointer;">
+                  <i class="bi bi-send me-1"></i>Send link via email now
+                </label>
+              </div>
+              <div id="notifyEmailsBox{{ doc.id }}" style="display:none;">
+                <input type="text" name="notify_emails" class="form-control-pro"
+                       placeholder="recipient@example.com, another@example.com" style="font-size:13px;">
+                <span class="field-hint">Separate multiple addresses with commas.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="upload-modal-footer">
+          <span class="umf-quota"><i class="bi bi-info-circle me-1"></i>Manage links in <a href="/shared-with-me" style="color:var(--m700)">My Share Links</a></span>
+          <button type="button" class="btn-ghost" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-primary-pro"><i class="bi bi-link-45deg me-1"></i>Create Link</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ══════════════════════════════════════════════════════════════
+   FILE EXPLORER
+   ══════════════════════════════════════════════════════════════ */
+
+const SESSION_USER_ID = {{ session.user_id }};
+const SESSION_ROLE    = "{{ session.get('role','Staff') }}";
+
+let currentView = 'explorer';
+let selectedId  = null;
+
+/* ── View mode switching ─────────────────────────────────────── */
+function setViewMode(mode) {
+  currentView = mode;
+  document.getElementById('explorerView').style.display = mode === 'explorer' ? 'flex' : 'none';
+  document.getElementById('tableView').style.display    = mode === 'table'    ? 'block' : 'none';
+  document.getElementById('gridView').style.display     = mode === 'grid'     ? 'block' : 'none';
+  document.querySelectorAll('.fe-view-btn').forEach(b => b.classList.remove('is-active'));
+  const map = {explorer:'btnExplorer', table:'btnTable', grid:'btnGrid'};
+  document.getElementById(map[mode]).classList.add('is-active');
+  localStorage.setItem('fe_view', mode);
+}
+
+function toggleView() {
+  const modes = ['explorer','table','grid'];
+  const next  = modes[(modes.indexOf(currentView)+1) % modes.length];
+  setViewMode(next);
+}
+
+/* ── File type filter ────────────────────────────────────────── */
+const EXT_TYPE = {
+  png:'image', jpg:'image', jpeg:'image', gif:'image', webp:'image',
+  pdf:'pdf',
+  doc:'word', docx:'word',
+  xls:'excel', xlsx:'excel', csv:'excel',
+  ppt:'ppt', pptx:'ppt',
+  txt:'text', md:'text',
+  dwg:'cad', dxf:'cad',
+  zip:'archive', rar:'archive',
+};
+
+function filterType(btn, type) {
+  document.querySelectorAll('.fe-type-btn').forEach(b => b.classList.remove('is-active'));
+  btn.classList.add('is-active');
+  document.querySelectorAll('.fe-file-item').forEach(item => {
+    if (type === 'all') {
+      item.style.display = '';
+    } else {
+      const ext = item.dataset.ext.toLowerCase();
+      item.style.display = EXT_TYPE[ext] === type ? '' : 'none';
+    }
+  });
+}
+
+/* ── Select file ─────────────────────────────────────────────── */
+function selectFile(id) {
+  // Deselect previous
+  document.querySelectorAll('.fe-file-item').forEach(i => i.classList.remove('is-selected'));
+  const item = document.getElementById('feItem' + id);
+  if (!item) return;
+  item.classList.add('is-selected');
+  selectedId = id;
+
+  const d = item.dataset;
+  const ext = d.ext.toLowerCase();
+
+  // Show content panel
+  document.getElementById('fePreviewEmpty').style.display   = 'none';
+  document.getElementById('fePreviewContent').style.display = 'flex';
+
+  // Header
+  document.getElementById('fePhIcon').innerHTML =
+    `<div class="file-icon ext-${ext}" style="width:40px;height:40px;font-size:20px;border-radius:9px;flex-shrink:0;">
+       <i class="bi ${extIcon(ext)}"></i>
+     </div>`;
+  document.getElementById('fePhName').textContent = d.name;
+  document.getElementById('fePhMeta').textContent = `${d.size} · ${d.cat} · ${d.date}`;
+
+  // Actions
+  const canEdit = (parseInt(d.owner) === SESSION_USER_ID || SESSION_ROLE === 'Admin');
+  let actions = `<a href="/download/${id}" class="btn-primary-pro btn-sm-pro"><i class="bi bi-download me-1"></i>Download</a>`;
+  if (canEdit) {
+    actions += `<button type="button" class="btn-ghost btn-sm-pro" title="Share"
+                  data-bs-toggle="modal" data-bs-target="#shareModal${id}">
+                  <i class="bi bi-share me-1"></i>Share
+                </button>`;
+    actions += `<form action="/pin/${id}" method="POST" class="d-inline">
+                  <button type="submit" class="btn-ghost btn-sm-pro" title="Pin">
+                    <i class="bi bi-pin${d.pinned==='true' ? '-fill' : ''} me-1"></i>${d.pinned==='true' ? 'Unpin' : 'Pin'}
+                  </button>
+                </form>`;
+    actions += `<form action="/delete/${id}" method="POST" class="d-inline"
+                  onsubmit="return confirm('Move to Recycle Bin?')">
+                  <button type="submit" class="tbl-btn is-danger" title="Delete"><i class="bi bi-trash3"></i></button>
+                </form>`;
+  }
+  document.getElementById('fePhActions').innerHTML = actions;
+
+  // Preview area
+  renderPreview(id, ext, d.name);
+
+  // Details
+  const tags = d.tags ? d.tags.split(',').filter(Boolean) : [];
+  document.getElementById('feDetailsGrid').innerHTML = `
+    <div class="fe-detail-row"><span class="fe-detail-label">File name</span><span class="fe-detail-val">${d.name}</span></div>
+    <div class="fe-detail-row"><span class="fe-detail-label">Category</span><span class="fe-detail-val"><span class="cat-badge">${d.cat}</span></span></div>
+    <div class="fe-detail-row"><span class="fe-detail-label">Size</span><span class="fe-detail-val">${d.size}</span></div>
+    <div class="fe-detail-row"><span class="fe-detail-label">Uploaded</span><span class="fe-detail-val">${d.date}</span></div>
+    <div class="fe-detail-row"><span class="fe-detail-label">Uploaded by</span><span class="fe-detail-val">${d.uploader}</span></div>
+    ${d.desc ? `<div class="fe-detail-row fe-detail-row-full"><span class="fe-detail-label">Description</span><span class="fe-detail-val">${d.desc}</span></div>` : ''}
+  `;
+  document.getElementById('feDetailsTags').innerHTML = tags.length
+    ? '<div class="fe-details-tags-label">Tags</div>' + tags.map(t => `<span class="tag-chip">${t}</span>`).join('')
+    : '';
+}
+
+/* ── Render preview by file type ─────────────────────────────── */
+function renderPreview(id, ext, name) {
+  const area = document.getElementById('fePreviewArea');
+  area.innerHTML = '<div class="fe-preview-loading"><div class="fe-spinner"></div></div>';
+
+  const previewUrl = `/download/${id}`;
+
+  // IMAGE
+  if (['png','jpg','jpeg','gif','webp','bmp','svg'].includes(ext)) {
+    const img = new Image();
+    img.onload = () => {
+      area.innerHTML = `<div class="fe-preview-img-wrap"><img src="${previewUrl}" alt="${name}" class="fe-preview-img"></div>`;
+    };
+    img.onerror = () => noPreview(area, ext, name);
+    img.src = previewUrl;
+    return;
+  }
+
+  // PDF
+  if (ext === 'pdf') {
+    area.innerHTML = `
+      <div class="fe-preview-pdf-wrap">
+        <iframe src="${previewUrl}" class="fe-preview-pdf" title="${name}"
+                onload="this.parentElement.classList.add('loaded')"></iframe>
+        <div class="fe-pdf-fallback">
+          <i class="bi bi-file-earmark-pdf-fill" style="font-size:48px;color:#DC2626;"></i>
+          <p style="margin:8px 0 0;">PDF preview not available in your browser.</p>
+          <a href="${previewUrl}" class="btn-primary-pro btn-sm-pro mt-2" style="margin-top:8px;">
+            <i class="bi bi-download me-1"></i>Download to view
+          </a>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // TEXT / CODE / CSV / MD
+  if (['txt','md','csv','json','xml','html','htm','css','js','py','java','c','cpp','ts','sql','sh','bat','log','ini','yaml','yml'].includes(ext)) {
+    fetch(previewUrl)
+      .then(r => {
+        if (!r.ok) throw new Error('fetch failed');
+        return r.text();
+      })
+      .then(text => {
+        const escaped = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const lines   = escaped.split('\n');
+        const isCode  = !['txt','md','csv','log'].includes(ext);
+        area.innerHTML = `
+          <div class="fe-preview-text-wrap">
+            <div class="fe-text-toolbar">
+              <span class="fe-text-lang">${ext.toUpperCase()}</span>
+              <span class="fe-text-lines">${lines.length} lines</span>
+            </div>
+            <pre class="fe-code-block ${isCode ? 'is-code' : ''}">${escaped}</pre>
+          </div>`;
+      })
+      .catch(() => noPreview(area, ext, name));
+    return;
+  }
+
+  // VIDEO
+  if (['mp4','webm','ogv','mov'].includes(ext)) {
+    area.innerHTML = `
+      <div class="fe-preview-media-wrap">
+        <video controls class="fe-preview-video">
+          <source src="${previewUrl}" type="video/${ext === 'mov' ? 'mp4' : ext}">
+          Your browser does not support video playback.
+        </video>
+      </div>`;
+    return;
+  }
+
+  // AUDIO
+  if (['mp3','wav','ogg','aac','m4a'].includes(ext)) {
+    area.innerHTML = `
+      <div class="fe-preview-audio-wrap">
+        <div class="fe-audio-icon"><i class="bi bi-music-note-beamed"></i></div>
+        <p class="fe-audio-name">${name}</p>
+        <audio controls class="fe-preview-audio">
+          <source src="${previewUrl}">
+        </audio>
+      </div>`;
+    return;
+  }
+
+  // EVERYTHING ELSE
+  noPreview(area, ext, name);
+}
+
+function noPreview(area, ext, name) {
+  const iconMap = {
+    doc:'bi-file-earmark-word-fill', docx:'bi-file-earmark-word-fill',
+    xls:'bi-file-earmark-excel-fill', xlsx:'bi-file-earmark-excel-fill',
+    ppt:'bi-file-earmark-ppt-fill', pptx:'bi-file-earmark-ppt-fill',
+    zip:'bi-file-earmark-zip-fill', rar:'bi-file-earmark-zip-fill',
+    dwg:'bi-file-earmark-ruled-fill', dxf:'bi-file-earmark-ruled-fill',
+  };
+  const icon  = iconMap[ext] || 'bi-file-earmark-fill';
+  const hints = {
+    docx:'Word document', doc:'Word document',
+    xlsx:'Excel spreadsheet', xls:'Excel spreadsheet',
+    pptx:'PowerPoint presentation', ppt:'PowerPoint presentation',
+    dwg:'AutoCAD drawing', dxf:'CAD exchange file',
+    zip:'ZIP archive', rar:'RAR archive',
+  };
+  const hint = hints[ext] || 'This file type cannot be previewed in the browser.';
+  area.innerHTML = `
+    <div class="fe-no-preview">
+      <i class="bi ${icon} fe-no-preview-icon ext-${ext}-color"></i>
+      <h3>${name}</h3>
+      <p>${hint}</p>
+      <p style="font-size:12px;color:var(--ink500);">Download the file to open it in its native application.</p>
+    </div>`;
+}
+
+function extIcon(ext) {
+  const m = {
+    pdf:'bi-file-earmark-pdf-fill',
+    doc:'bi-file-earmark-word-fill', docx:'bi-file-earmark-word-fill',
+    xls:'bi-file-earmark-excel-fill', xlsx:'bi-file-earmark-excel-fill',
+    ppt:'bi-file-earmark-ppt-fill', pptx:'bi-file-earmark-ppt-fill',
+    png:'bi-file-earmark-image-fill', jpg:'bi-file-earmark-image-fill',
+    jpeg:'bi-file-earmark-image-fill', gif:'bi-file-earmark-image-fill',
+    txt:'bi-file-earmark-text-fill', csv:'bi-file-earmark-spreadsheet-fill',
+    zip:'bi-file-earmark-zip-fill', rar:'bi-file-earmark-zip-fill',
+    dwg:'bi-file-earmark-ruled-fill', dxf:'bi-file-earmark-ruled-fill',
+    mp4:'bi-file-earmark-play-fill', mp3:'bi-file-earmark-music-fill',
+  };
+  return m[ext] || 'bi-file-earmark-fill';
+}
+
+/* ── Resize handle ───────────────────────────────────────────── */
+(function() {
+  const handle  = document.getElementById('feResizeHandle');
+  const sidebar = document.getElementById('feSidebar');
+  if (!handle || !sidebar) return;
+  let dragging = false, startX = 0, startW = 0;
+  handle.addEventListener('mousedown', e => {
+    dragging = true; startX = e.clientX; startW = sidebar.offsetWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const w = Math.min(Math.max(startW + e.clientX - startX, 200), 600);
+    sidebar.style.width = w + 'px';
+  });
+  document.addEventListener('mouseup', () => {
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
+
+/* ── Keyboard navigation ─────────────────────────────────────── */
+document.addEventListener('keydown', e => {
+  if (currentView !== 'explorer') return;
+  if (['ArrowDown','ArrowUp'].includes(e.key)) {
+    e.preventDefault();
+    const items = [...document.querySelectorAll('.fe-file-item:not([style*="none"])')];
+    if (!items.length) return;
+    const idx = items.findIndex(i => i.dataset.id == selectedId);
+    const next = e.key === 'ArrowDown'
+      ? items[Math.min(idx + 1, items.length - 1)]
+      : items[Math.max(idx - 1, 0)];
+    if (next) { next.scrollIntoView({block:'nearest'}); selectFile(parseInt(next.dataset.id)); }
+  }
+});
+
+/* ── Restore saved view on load ──────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('fe_view') || 'explorer';
+  setViewMode(saved);
+  // Auto-select first file in explorer
+  if (saved === 'explorer') {
+    const first = document.querySelector('.fe-file-item');
+    if (first) selectFile(parseInt(first.dataset.id));
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   SHARE MODAL HELPERS
+   ══════════════════════════════════════════════════════════════ */
+function onVisChange(docId, vis) {
+  document.getElementById('pwSection'    + docId).style.display = vis === 'private' ? 'block' : 'none';
+  document.getElementById('emailSection' + docId).style.display = vis === 'email'   ? 'block' : 'none';
+  const pwInput = document.getElementById('sharePw' + docId);
+  if (vis !== 'private' && pwInput) pwInput.value = '';
+  const pwErr = document.getElementById('pwErr' + docId);
+  if (pwErr) pwErr.style.display = 'none';
+  const emailErr = document.getElementById('emailErr' + docId);
+  if (emailErr) emailErr.style.display = 'none';
+}
+function onExpiryChange(docId, val) {
+  const box = document.getElementById('customExpiry' + docId);
+  if (box) box.style.display = val === 'custom' ? 'block' : 'none';
+}
+function toggleNotifyEmails(docId, checked) {
+  const box = document.getElementById('notifyEmailsBox' + docId);
+  if (box) box.style.display = checked ? 'block' : 'none';
+}
+function togglePwEye(inputId, iconId) {
+  const input = document.getElementById(inputId);
+  const icon  = document.getElementById(iconId);
+  if (!input) return;
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+}
+const _emailTags = {};
+function getTagSet(docId) {
+  if (!_emailTags[docId]) _emailTags[docId] = new Set();
+  return _emailTags[docId];
+}
+function renderTags(docId) {
+  const container = document.getElementById('emailTags'  + docId);
+  const hidden    = document.getElementById('emailHidden'+ docId);
+  const tags      = getTagSet(docId);
+  container.innerHTML = '';
+  tags.forEach(email => {
+    const chip = document.createElement('span');
+    chip.className = 'email-tag-chip';
+    chip.innerHTML = `<i class="bi bi-envelope-fill"></i>${email}<button type="button" onclick="removeEmail(${docId},'${email}')"><i class="bi bi-x"></i></button>`;
+    container.appendChild(chip);
+  });
+  hidden.value = [...tags].join(',');
+}
+function addEmail(docId, raw) {
+  const emails = raw.split(/[,;\s]+/).map(e=>e.trim().toLowerCase()).filter(Boolean);
+  const tags   = getTagSet(docId);
+  emails.forEach(e => { if (e.includes('@')) tags.add(e); });
+  renderTags(docId);
+}
+function removeEmail(docId, email) { getTagSet(docId).delete(email); renderTags(docId); }
+function handleEmailKey(e, docId) {
+  const input = e.target;
+  if (['Enter','Tab',',',' '].includes(e.key)) {
+    e.preventDefault();
+    if (input.value.trim()) { addEmail(docId, input.value); input.value = ''; }
+  } else if (e.key === 'Backspace' && !input.value) {
+    const tags = getTagSet(docId);
+    const last = [...tags].pop();
+    if (last) { tags.delete(last); renderTags(docId); }
+  }
+}
+function flushEmailInput(docId) {
+  const input = document.getElementById('emailRaw' + docId);
+  if (input && input.value.trim()) { addEmail(docId, input.value); input.value = ''; }
+}
+function validateShareForm(docId) {
+  const form   = document.getElementById('shareForm' + docId);
+  const vis    = form.querySelector('input[name="visibility"]:checked');
+  const visVal = vis ? vis.value : 'public';
+  if (visVal === 'private') {
+    const pwInput = document.getElementById('sharePw' + docId);
+    const pwErr   = document.getElementById('pwErr'   + docId);
+    if (!pwInput || !pwInput.value.trim()) { pwErr.style.display = 'flex'; pwInput && pwInput.focus(); return false; }
+    pwErr.style.display = 'none';
+  }
+  if (visVal === 'email') {
+    flushEmailInput(docId);
+    const tags     = getTagSet(docId);
+    const emailErr = document.getElementById('emailErr' + docId);
+    if (tags.size === 0) { emailErr.style.display = 'flex'; document.getElementById('emailRaw' + docId).focus(); return false; }
+    emailErr.style.display = 'none';
+  }
+  return true;
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.modal').forEach(modal => {
+    modal.addEventListener('hidden.bs.modal', () => {
+      modal.querySelectorAll('input[type="radio"][value="public"]').forEach(r => r.checked = true);
+      modal.querySelectorAll('[id^="pwSection"]').forEach(el => el.style.display = 'none');
+      modal.querySelectorAll('[id^="emailSection"]').forEach(el => el.style.display = 'none');
+      modal.querySelectorAll('[id^="customExpiry"]').forEach(el => el.style.display = 'none');
+      modal.querySelectorAll('[id^="notifyEmailsBox"]').forEach(el => el.style.display = 'none');
+      modal.querySelectorAll('input[type="checkbox"]').forEach(el => el.checked = false);
+      modal.querySelectorAll('input[type="password"]').forEach(el => el.value = '');
+      modal.querySelectorAll('input[name="notify_emails"]').forEach(el => el.value = '');
+      modal.querySelectorAll('input[name="download_limit"]').forEach(el => el.value = '');
+      modal.querySelectorAll('textarea[name="note"]').forEach(el => el.value = '');
+      modal.querySelectorAll('select[name="expiry"]').forEach(el => el.value = '7d');
+      modal.querySelectorAll('.email-tags').forEach(el => el.innerHTML = '');
+      modal.querySelectorAll('input[type="hidden"][name="allowed_emails"]').forEach(el => el.value = '');
+      modal.querySelectorAll('.email-tag-input').forEach(el => el.value = '');
+      Object.keys(_emailTags).forEach(k => _emailTags[k] = new Set());
+    });
+  });
+});
+</script>
+{% endblock %}

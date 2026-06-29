@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}Recycle Bin — Engineering Office{% endblock %}
+{% block page_title %}Recycle Bin{% endblock %}
+{% block breadcrumb %}
+  <span>Home</span>
+  <i class="bi bi-chevron-right"></i>
+  <span>Recycle Bin</span>
+{% endblock %}
+
+{% block topbar_right %}
+{% if items %}
+<form action="/recycle-bin/empty" method="POST"
+      onsubmit="return confirm('Permanently delete ALL items in your Recycle Bin? This cannot be undone.')">
+  <button type="submit" class="btn-danger-pro">
+    <i class="bi bi-trash3-fill me-1"></i>Empty Recycle Bin
+  </button>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Info Banner ──────────────────────────────────────── -->
+<div class="rb-banner">
+  <div class="rb-banner-left">
+    <div class="rb-banner-icon"><i class="bi bi-recycle"></i></div>
+    <div>
+      <p class="rb-banner-title">Recycle Bin</p>
+      <p class="rb-banner-sub">
+        Files are automatically and permanently deleted after
+        <strong>{{ recycle_days }} days</strong>.
+        You can restore or permanently delete them at any time.
+      </p>
+    </div>
+  </div>
+  <div class="rb-banner-stats">
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ items|length }}</span>
+      <span class="rb-stat-lbl">Item{{ 's' if items|length != 1 }}</span>
+    </div>
+    <div class="rb-stat-divider"></div>
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ trash_size }}</span>
+      <span class="rb-stat-lbl">Total Size</span>
+    </div>
+  </div>
+</div>
+
+{% if items %}
+
+<!-- ── Expiry Legend ─────────────────────────────────────── -->
+<div class="rb-legend">
+  <span class="rbl-item"><span class="rbl-dot rbl-safe"></span> 6–15 days remaining</span>
+  <span class="rbl-item"><span class="rbl-dot rbl-warn"></span> 1–5 days remaining</span>
+  <span class="rbl-item"><span class="rbl-dot rbl-crit"></span> Expires today</span>
+</div>
+
+<!-- ── Recycle Bin Table ─────────────────────────────────── -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="sch-title"><i class="bi bi-trash3-fill"></i> Deleted Files</h2>
+    <span class="sch-badge">{{ items|length }}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table rb-table">
+      <thead>
+        <tr>
+          <th style="width:28%">File</th>
+          <th>Category</th>
+          <th>Size</th>
+          <th>Deleted On</th>
+          <th>Original Upload</th>
+          <th>Deleted By</th>
+          <th>Expires In</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        {% set days = item.days_remaining %}
+        <tr class="rb-row
+          {% if days == 0 %} rb-row-crit
+          {% elif days <= 5 %} rb-row-warn
+          {% endif %}">
+
+          <td>
+            <div class="file-cell">
+              <div class="file-icon ext-{{ item.file_ext }}">
+                <i class="bi {{ ext_icon(item.file_ext) }}"></i>
+              </div>
+              <div class="file-meta">
+                <span class="file-name">{{ item.original_name }}</span>
+                {% if item.description %}
+                <span class="file-desc">{{ item.description }}</span>
+                {% endif %}
+              </div>
+            </div>
+          </td>
+
+          <td><span class="cat-badge">{{ item.category }}</span></td>
+
+          <td class="cell-muted">{{ item.file_size | fmt_size }}</td>
+
+          <td class="cell-muted" style="white-space:nowrap">
+            {{ item.deleted_at.strftime('%b %d, %Y') }}<br>
+            <span style="font-size:11px">{{ item.deleted_at.strftime('%H:%M') }}</span>
+          </td>
+
+          <td class="cell-muted" style="white-space:nowrap">
+            {{ item.upload_date.strftime('%b %d, %Y') }}
+          </td>
+
+          <td class="cell-muted">
+            {{ item.deleter.fullname if item.deleter else '—' }}
+          </td>
+
+          <td style="white-space:nowrap">
+            {% if days == 0 %}
+              <span class="expiry-chip expiry-crit">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>Expires today
+              </span>
+            {% elif days <= 5 %}
+              <span class="expiry-chip expiry-warn">
+                <i class="bi bi-clock-fill me-1"></i>{{ days }} day{{ 's' if days != 1 }}
+              </span>
+            {% else %}
+              <span class="expiry-chip expiry-safe">
+                <i class="bi bi-clock me-1"></i>{{ days }} day{{ 's' if days != 1 }}
+              </span>
+            {% endif %}
+            <div class="expiry-bar-wrap">
+              <div class="expiry-bar
+                {% if days == 0 %} expiry-bar-crit
+                {% elif days <= 5 %} expiry-bar-warn
+                {% else %} expiry-bar-safe
+                {% endif %}"
+                style="width:{{ ((recycle_days - days) / recycle_days * 100)|int }}%">
+              </div>
+            </div>
+          </td>
+
+          <td class="text-end cell-actions" style="white-space:nowrap">
+            {% if item.original_owner == session.user_id or session.get('role') == 'Admin' %}
+            <form action="/recycle-bin/restore/{{ item.id }}" method="POST" class="d-inline">
+              <button type="submit" class="tbl-btn tbl-btn-restore" title="Restore file">
+                <i class="bi bi-arrow-counterclockwise"></i>
+              </button>
+            </form>
+            <form action="/recycle-bin/delete/{{ item.id }}" method="POST" class="d-inline"
+                  onsubmit="return confirm('Permanently delete \'{{ item.original_name }}\'? This cannot be undone.')">
+              <button type="submit" class="tbl-btn is-danger" title="Permanently delete">
+                <i class="bi bi-trash3-fill"></i>
+              </button>
+            </form>
+            {% else %}
+            <span class="cell-muted" style="font-size:11px">No access</span>
+            {% endif %}
+          </td>
+
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+
+<!-- ── Empty State ───────────────────────────────────────── -->
+<div class="section-card">
+  <div class="empty-placeholder large-empty">
+    <svg viewBox="0 0 160 120" class="empty-blueprint-svg" aria-hidden="true">
+      <g stroke="currentColor" stroke-width="1.5" fill="none"
+         stroke-linecap="round" stroke-linejoin="round">
+        <rect x="35" y="15" width="90" height="90" rx="4" opacity=".3" stroke-dasharray="4 4"/>
+        <polyline points="55,55 70,70 105,40" stroke-width="2.5" opacity=".6"/>
+        <circle cx="80" cy="60" r="30" opacity=".15" stroke-width="1"/>
+      </g>
+    </svg>
+    <h3>Recycle Bin is empty</h3>
+    <p>Files you delete will appear here for {{ recycle_days }} days before being permanently removed.</p>
+    <a href="/documents" class="btn-primary-pro btn-sm-pro">
+      <i class="bi bi-folder2-open me-1"></i>Browse Documents
+    </a>
+  </div>
+</div>
+
+{% endif %}
+
+<!-- ── Auto-purge Info Card ──────────────────────────────── -->
+<div class="rb-info-card">
+  <div class="rb-info-icon"><i class="bi bi-info-circle-fill"></i></div>
+  <div class="rb-info-body">
+    <strong>Automatic Cleanup</strong>
+    <p>The system automatically and permanently removes files that have been in the Recycle Bin
+       for more than <strong>{{ recycle_days }} days</strong>. This happens every time any user
+       logs in. Permanently deleted files cannot be recovered.</p>
+  </div>
+</div>
+
+{% endblock %}

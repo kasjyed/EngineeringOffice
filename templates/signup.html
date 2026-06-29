@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Create Account — Engineering Office Storage{% endblock %}
+
+{% block auth_content %}
+<div class="auth-layout">
+
+  <!-- Left Panel -->
+  <div class="auth-panel-left">
+    <div class="apl-inner">
+      <div class="apl-logo">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Municipal Engineering Office seal">
+      </div>
+      <h1 class="apl-title">Engineering<br>Office Storage</h1>
+      <p class="apl-eyebrow">Municipal Engineering Office &middot; Sta. Lucia, Ilocos Sur</p>
+      <p class="apl-desc">Create an account to start uploading, organizing, and sharing engineering documents with your team.</p>
+
+      <div class="apl-features">
+        <div class="apl-feature">
+          <div class="apl-feature-icon"><i class="bi bi-folder2-open"></i></div>
+          <div>
+            <strong>Organized library</strong>
+            <p>Upload and categorize files by type, project, or department.</p>
+          </div>
+        </div>
+        <div class="apl-feature">
+          <div class="apl-feature-icon"><i class="bi bi-pin-angle-fill"></i></div>
+          <div>
+            <strong>Pin important files</strong>
+            <p>Keep critical documents one click away at all times.</p>
+          </div>
+        </div>
+        <div class="apl-feature">
+          <div class="apl-feature-icon"><i class="bi bi-tags-fill"></i></div>
+          <div>
+            <strong>Tags & search</strong>
+            <p>Tag files and find anything instantly across the entire library.</p>
+          </div>
+        </div>
+        <div class="apl-feature">
+          <div class="apl-feature-icon"><i class="bi bi-hdd-stack-fill"></i></div>
+          <div>
+            <strong>50 GB shared storage</strong>
+            <p>Ample space for drawings, reports, contracts, and more.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="apl-decoration" aria-hidden="true"></div>
+  </div>
+
+  <!-- Right Panel -->
+  <div class="auth-panel-right">
+    <div class="auth-form-wrap">
+
+      <div class="auth-form-header">
+        <h2>Create account</h2>
+        <p>Fill in the details below to register</p>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }} mb-3">
+          <i class="bi bi-exclamation-circle-fill me-2"></i>{{ msg }}
+        </div>
+        {% endfor %}
+      {% endwith %}
+
+      <form method="POST" novalidate id="signupForm">
+
+        <div class="field-block">
+          <label class="field-label">Full name</label>
+          <div class="field-icon-wrap">
+            <i class="bi bi-person field-icon"></i>
+            <input type="text" name="fullname" class="field-input"
+                   placeholder="Juan dela Cruz" required autofocus>
+          </div>
+        </div>
+
+        <div class="field-block">
+          <label class="field-label">Email address</label>
+          <div class="field-icon-wrap">
+            <i class="bi bi-envelope field-icon"></i>
+            <input type="email" name="email" class="field-input"
+                   placeholder="you@engineering.com" required>
+          </div>
+        </div>
+
+        <div class="field-block">
+          <label class="field-label">
+            Password
+            <span class="label-optional">min. 6 characters</span>
+          </label>
+          <div class="field-icon-wrap">
+            <i class="bi bi-lock field-icon"></i>
+            <input type="password" name="password" id="pw1" class="field-input"
+                   placeholder="••••••••" required minlength="6" oninput="checkMatch()">
+            <button type="button" class="field-eye-btn" id="pw1Toggle" aria-label="Show password">
+              <i class="bi bi-eye" id="pw1EyeIcon"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="field-block">
+          <label class="field-label">Confirm password</label>
+          <div class="field-icon-wrap">
+            <i class="bi bi-lock field-icon"></i>
+            <input type="password" name="confirm_password" id="pw2" class="field-input"
+                   placeholder="••••••••" required oninput="checkMatch()">
+          </div>
+          <p class="field-feedback is-error" id="matchErr" style="display:none">
+            <i class="bi bi-x-circle-fill"></i> Passwords do not match
+          </p>
+          <p class="field-feedback is-ok" id="matchOk" style="display:none">
+            <i class="bi bi-check-circle-fill"></i> Passwords match
+          </p>
+        </div>
+
+        <button type="submit" class="auth-submit-btn" id="submitBtn">
+          Create Account <i class="bi bi-arrow-right ms-2"></i>
+        </button>
+
+      </form>
+
+      <p class="auth-switch">
+        Already have an account?
+        <a href="/login">Sign in</a>
+      </p>
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+function checkMatch() {
+  const p1 = document.getElementById('pw1').value;
+  const p2 = document.getElementById('pw2').value;
+  const err = document.getElementById('matchErr');
+  const ok  = document.getElementById('matchOk');
+  const btn = document.getElementById('submitBtn');
+  if (!p2) { err.style.display = 'none'; ok.style.display = 'none'; btn.disabled = false; return; }
+  if (p1 === p2) {
+    err.style.display = 'none'; ok.style.display = 'flex'; btn.disabled = false;
+  } else {
+    ok.style.display = 'none'; err.style.display = 'flex'; btn.disabled = true;
+  }
+}
+
+// Password toggle
+const pw1      = document.getElementById('pw1');
+const pw1Icon  = document.getElementById('pw1EyeIcon');
+document.getElementById('pw1Toggle').addEventListener('click', () => {
+  const show = pw1.type === 'password';
+  pw1.type = show ? 'text' : 'password';
+  pw1Icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+});
+</script>
+{% endblock %}

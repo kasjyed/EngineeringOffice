@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ doc.original_name }} — Shared File</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="share-page">
+  <div class="share-page-card {{ 'share-page-card-wide' if is_previewable else 'share-page-card-narrow' }}">
+
+    <!-- Header -->
+    <div class="share-page-header">
+      <div class="share-page-logo">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Municipal Engineering Office seal">
+      </div>
+      <div>
+        <p class="share-page-org">Municipal Engineering Office &middot; Sta. Lucia, Ilocos Sur</p>
+        <p class="share-page-tagline">Shared Document</p>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="share-page-body">
+
+      {% if is_image %}
+      <!-- ── Inline Image Preview ────────────────────────────── -->
+      <div class="share-preview-frame" style="margin-bottom:16px;">
+        <img src="{{ url_for('preview_shared', token=link.token) }}"
+             alt="{{ doc.original_name }}"
+             class="share-preview-image"
+             onerror="this.parentElement.style.display='none';">
+      </div>
+      <h1 class="share-file-name" style="font-size:17px;">{{ doc.original_name }}</h1>
+
+      {% elif is_pdf %}
+      <!-- ── Inline PDF Preview ──────────────────────────────── -->
+      <div class="share-preview-frame share-preview-frame-pdf" style="margin-bottom:16px;">
+        <iframe src="{{ url_for('preview_shared', token=link.token) }}"
+                class="share-preview-pdf"
+                title="{{ doc.original_name }}"></iframe>
+      </div>
+      <h1 class="share-file-name" style="font-size:17px;">{{ doc.original_name }}</h1>
+
+      {% else %}
+      <!-- ── Generic File Icon ────────────────────────────────── -->
+      <div class="share-file-icon ext-{{ doc.file_ext }}">
+        <i class="bi {{ ext_icon(doc.file_ext) }}"></i>
+      </div>
+      <h1 class="share-file-name">{{ doc.original_name }}</h1>
+      {% endif %}
+
+      <!-- File metadata -->
+      <div class="share-file-meta">
+        <span><i class="bi bi-folder me-1"></i>{{ doc.category }}</span>
+        <span><i class="bi bi-hdd me-1"></i>{{ doc.file_size | fmt_size }}</span>
+        <span><i class="bi bi-calendar3 me-1"></i>{{ doc.upload_date.strftime('%b %d, %Y') }}</span>
+        {% if doc.uploader %}
+        <span><i class="bi bi-person me-1"></i>{{ doc.uploader.fullname }}</span>
+        {% endif %}
+      </div>
+
+      {% if doc.description %}
+      <p class="share-file-desc">{{ doc.description }}</p>
+      {% endif %}
+
+      {% if doc.tag_list %}
+      <div style="margin-bottom:16px;">
+        {% for tag in doc.tag_list %}
+        <span class="tag-chip">{{ tag }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Access badge -->
+      <div class="share-access-badge {{ 'badge-public' if link.visibility == 'public' else 'badge-private' }}">
+        {% if link.visibility == 'public' %}
+          <i class="bi bi-globe2"></i>&nbsp;Public link — anyone with this link can view this file
+        {% else %}
+          <i class="bi bi-lock-fill"></i>&nbsp;Private link — password protected
+        {% endif %}
+      </div>
+
+      <!-- Download button -->
+      <a href="{{ url_for('download_shared', token=link.token) }}" class="share-download-btn">
+        <i class="bi bi-download me-2"></i>Download File
+      </a>
+
+      {% if link.expires_at %}
+      <p class="share-expiry-note">
+        <i class="bi bi-clock me-1"></i>
+        This link expires on {{ link.expires_at.strftime('%B %d, %Y at %H:%M UTC') }}
+      </p>
+      {% endif %}
+
+    </div>
+
+    <!-- Footer -->
+    <div class="share-page-footer">
+      <i class="bi bi-shield-check me-1"></i>
+      Shared via Engineering Office Storage
+      &middot; {{ link.view_count }} view{{ 's' if link.view_count != 1 else '' }}
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

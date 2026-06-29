@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}{{ subject.fullname }} — Upload History{% endblock %}
+{% block page_title %}Upload History{% endblock %}
+{% block breadcrumb %}
+  <span>Home</span> <i class="bi bi-chevron-right"></i>
+  <span>Users</span> <i class="bi bi-chevron-right"></i>
+  <span>{{ subject.fullname }}</span>
+{% endblock %}
+
+{% block topbar_right %}
+<a href="/users" class="btn-ghost"><i class="bi bi-arrow-left me-1"></i>Back to Users</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── User Summary Card ─────────────────────────────────── -->
+<div class="section-card profile-identity-card mb-4" style="text-align:left; display:flex; align-items:center; gap:20px; padding:24px;">
+  <div class="pic-avatar" style="margin:0; flex-shrink:0;">{{ subject.fullname[0]|upper }}</div>
+  <div style="flex:1; min-width:0;">
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
+      <span class="pic-name" style="margin:0;">{{ subject.fullname }}</span>
+      <span class="role-badge role-{{ subject.role|lower }}">
+        <i class="bi {{ 'bi-shield-fill-check' if subject.role == 'Admin' else 'bi-person-fill' }}"></i>
+        {{ subject.role }}
+      </span>
+      {% if subject.is_active %}
+      <span class="status-pill status-active"><i class="bi bi-circle-fill"></i> Active</span>
+      {% else %}
+      <span class="status-pill status-inactive"><i class="bi bi-circle-fill"></i> Inactive</span>
+      {% endif %}
+    </div>
+    <p style="font-size:13px; color:var(--ink500); margin:0;">
+      {{ subject.email }} &middot; {{ subject.department }} &middot;
+      Joined {{ subject.created_at.strftime('%B %d, %Y') }}
+    </p>
+  </div>
+  <div style="display:flex; gap:24px; flex-shrink:0;">
+    <div style="text-align:center;">
+      <span style="font-size:22px; font-weight:900; color:var(--m900); display:block;">{{ docs|length }}</span>
+      <span style="font-size:11px; color:var(--ink500); font-weight:600;">Files</span>
+    </div>
+    <div style="text-align:center;">
+      <span style="font-size:22px; font-weight:900; color:var(--m900); display:block;">{{ total_size }}</span>
+      <span style="font-size:11px; color:var(--ink500); font-weight:600;">Storage Used</span>
+    </div>
+  </div>
+</div>
+
+<div class="dashboard-grid">
+
+  <!-- Uploaded Files -->
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2 class="sch-title"><i class="bi bi-folder2-open"></i> Uploaded Files</h2>
+      <span class="sch-badge">{{ docs|length }}</span>
+    </div>
+    {% if docs %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Category</th>
+            <th>Size</th>
+            <th>Date</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for doc in docs %}
+          <tr class="{{ 'row-pinned' if doc.is_pinned }}">
+            <td>
+              <div class="file-cell">
+                <div class="file-icon ext-{{ doc.file_ext }}"><i class="bi {{ ext_icon(doc.file_ext) }}"></i></div>
+                <div class="file-meta">
+                  <span class="file-name">{{ doc.original_name }}
+                    {% if doc.is_pinned %}<span class="pin-chip">Pinned</span>{% endif %}
+                  </span>
+                </div>
+              </div>
+            </td>
+            <td><span class="cat-badge">{{ doc.category }}</span></td>
+            <td class="cell-muted">{{ doc.file_size | fmt_size }}</td>
+            <td class="cell-muted">{{ doc.upload_date.strftime('%b %d, %Y') }}</td>
+            <td class="text-end cell-actions">
+              <a href="/download/{{ doc.id }}" class="tbl-btn" title="Download"><i class="bi bi-download"></i></a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-placeholder">
+      <i class="bi bi-folder2-open"></i>
+      <p>No files uploaded yet.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Activity Log -->
+  <div class="dashboard-aside">
+    <div class="section-card">
+      <div class="section-card-header">
+        <h2 class="sch-title"><i class="bi bi-activity"></i> Activity Log</h2>
+      </div>
+      {% if logs %}
+      <ul class="activity-feed">
+        {% for log in logs %}
+        <li class="af-item">
+          <span class="af-dot {{ 'is-upload' if 'Upload' in log.action else 'is-delete' if 'Delet' in log.action else 'is-login' if 'Signed' in log.action else '' }}"></span>
+          <div class="af-body">
+            <span class="af-action">{{ log.action }}</span>
+            {% if log.detail %}<span class="af-detail">{{ log.detail }}</span>{% endif %}
+            <span class="af-time">{{ log.timestamp.strftime('%b %d · %H:%M') }}</span>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty-placeholder small-empty">
+        <i class="bi bi-journal-text"></i><p>No activity logged.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

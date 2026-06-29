@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Engineering Office Storage{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+{# ── Auth / standalone pages (login, signup, error) use auth_content ── #}
+{% if self.auth_content() | trim %}
+  {% block auth_content %}{% endblock %}
+{% else %}
+
+{# ── App shell (all authenticated pages) ── #}
+<div class="app-shell">
+
+  <!-- ── Sidebar ──────────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+
+    <div class="sidebar-brand">
+      <div class="brand-mark">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Municipal Engineering Office seal">
+      </div>
+      <div class="brand-copy">
+        <span class="brand-name">Engineering Office</span>
+        <span class="brand-tagline">Document Storage</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <p class="nav-group-label">Main</p>
+      <ul>
+        <li>
+          <a href="/dashboard"
+             class="nav-link-item {{ 'is-active' if request.path == '/dashboard' }}">
+            <i class="bi bi-speedometer2"></i> Dashboard
+          </a>
+        </li>
+        <li>
+          <a href="/documents"
+             class="nav-link-item {{ 'is-active' if request.path.startswith('/documents') }}">
+            <i class="bi bi-folder2-open"></i> Documents
+          </a>
+        </li>
+        <li>
+          <a href="/shared-with-me"
+             class="nav-link-item {{ 'is-active' if request.path == '/shared-with-me' }}">
+            <i class="bi bi-share-fill"></i> My Share Links
+          </a>
+        </li>
+        <li>
+          <a href="/share-emails"
+             class="nav-link-item {{ 'is-active' if request.path == '/share-emails' }}">
+            <i class="bi bi-envelope-check-fill"></i> Email Dashboard
+          </a>
+        </li>
+      </ul>
+
+      <p class="nav-group-label" style="margin-top:14px;">Account</p>
+      <ul>
+        <li>
+          <a href="/profile"
+             class="nav-link-item {{ 'is-active' if request.path == '/profile' }}">
+            <i class="bi bi-person-circle"></i> My Profile
+          </a>
+        </li>
+        {% if session.get('role') == 'Admin' %}
+        <li>
+          <a href="/users"
+             class="nav-link-item {{ 'is-active' if request.path.startswith('/users') }}">
+            <i class="bi bi-people-fill"></i> Users
+          </a>
+        </li>
+        {% endif %}
+        <li>
+          <a href="/recycle-bin"
+             class="nav-link-item {{ 'is-active' if request.path == '/recycle-bin' }}">
+            <i class="bi bi-trash3-fill"></i> Recycle Bin
+            {# Show badge if there are items in the bin #}
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- Drafting tools decorative strip -->
+    <div class="sidebar-tools-strip" aria-hidden="true">
+      <i class="bi bi-pencil-fill"></i>
+      <i class="bi bi-rulers"></i>
+      <i class="bi bi-compass"></i>
+      <i class="bi bi-intersect"></i>
+      <i class="bi bi-bounding-box"></i>
+    </div>
+
+    <!-- Storage widget -->
+    <div class="sidebar-storage-widget">
+      <div class="ssw-head">
+        <span class="ssw-label">Storage</span>
+        <span class="ssw-pct" id="sswPct">
+          {{ stor.pct if stor is defined else '—' }}%
+        </span>
+      </div>
+      <div class="ssw-track">
+        <div class="ssw-fill {{ 'is-crit' if stor is defined and stor.critical else 'is-warn' if stor is defined and stor.warning else '' }}"
+             id="sswFill"
+             style="width:{{ [stor.pct, 100]|min if stor is defined else 0 }}%"></div>
+      </div>
+      <div class="ssw-meta">
+        <span>{{ stor.used_str if stor is defined else '—' }} used</span>
+        <span>{{ stor.free_str if stor is defined else '—' }} free</span>
+      </div>
+    </div>
+
+    <!-- User panel -->
+    <div class="sidebar-user-panel">
+      <div class="sup-avatar">{{ session.fullname[0]|upper if session.fullname else '?' }}</div>
+      <div class="sup-info">
+        <span class="sup-name">{{ session.fullname }}</span>
+        <span class="sup-role">{{ session.role }}</span>
+      </div>
+      <a href="/logout" class="sup-logout" title="Sign out">
+        <i class="bi bi-box-arrow-right"></i>
+      </a>
+    </div>
+
+  </aside>
+
+  <!-- ── Main Panel ────────────────────────────────────────── -->
+  <div class="main-panel">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+          <i class="bi bi-list"></i>
+        </button>
+        <div class="topbar-heading">
+          <div class="topbar-title">{% block page_title %}{% endblock %}</div>
+          <div class="topbar-breadcrumb">{% block breadcrumb %}{% endblock %}</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        {% block topbar_right %}{% endblock %}
+        <button class="topbar-upload-btn" data-bs-toggle="modal" data-bs-target="#uploadModal">
+          <i class="bi bi-upload"></i> Upload
+        </button>
+      </div>
+    </header>
+
+    <!-- Flash messages -->
+    <div class="flash-zone">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }} mb-2">
+          <i class="bi bi-{{ 'check-circle-fill' if cat == 'success' else 'exclamation-circle-fill' }} me-2"></i>
+          {{ msg }}
+        </div>
+        {% endfor %}
+      {% endwith %}
+    </div>
+
+    <!-- Page content -->
+    <main class="page-content">
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="page-footer">
+      <div class="pf-ruler"></div>
+      <div class="pf-row">
+        <span class="pf-text">
+          <i class="bi bi-building"></i>
+          Municipal Engineering Office &middot; Sta. Lucia, Ilocos Sur
+        </span>
+        <span class="pf-meta">Engineering Office Storage System</span>
+      </div>
+    </footer>
+
+  </div><!-- /main-panel -->
+
+</div><!-- /app-shell -->
+
+<!-- ── Upload Modal ─────────────────────────────────────────── -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content upload-modal-content">
+      <div class="upload-modal-header">
+        <div class="umh-icon"><i class="bi bi-cloud-upload-fill"></i></div>
+        <div>
+          <h5 class="umh-title" id="uploadModalLabel">Upload Document</h5>
+          <p class="umh-sub">Supported: PDF, Word, Excel, PPT, images, CAD, ZIP</p>
+        </div>
+        <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <form action="/upload" method="POST" enctype="multipart/form-data" id="uploadForm">
+        <div class="modal-body upload-modal-body">
+
+          <!-- Drop Zone -->
+          <div class="drop-zone" id="dropZone">
+            <input type="file" name="file" class="dz-file-input" id="fileInput"
+                   accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.dwg,.dxf,.zip,.rar">
+            <div class="dz-inner">
+              <i class="bi bi-cloud-upload dz-icon"></i>
+              <div class="dz-title">Drag & drop a file here</div>
+              <div class="dz-hint">or <span class="dz-browse">browse to upload</span> · Max 500 MB</div>
+            </div>
+          </div>
+
+          <!-- File preview strip -->
+          <div class="file-preview" id="filePreview">
+            <i class="bi bi-file-earmark fp-icon" id="fpIcon"></i>
+            <span class="fp-name" id="fpName">—</span>
+            <span class="fp-size" id="fpSize"></span>
+          </div>
+
+          <!-- Category -->
+          <div class="mb-3">
+            <label class="form-label-pro">Category</label>
+            <select name="category" class="form-control-pro">
+              {% for cat in categories %}
+              <option value="{{ cat }}">{{ cat }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Description -->
+          <div class="mb-3">
+            <label class="form-label-pro">
+              Description
+              <span class="label-optional">optional</span>
+            </label>
+            <textarea name="description" class="form-control-pro" rows="2"
+                      placeholder="Brief description of this document…"></textarea>
+          </div>
+
+          <!-- Tags -->
+          <div class="mb-0">
+            <label class="form-label-pro">
+              Tags
+              <span class="label-optional">comma-separated</span>
+            </label>
+            <input type="text" name="tags" class="form-control-pro"
+                   placeholder="e.g. bridge, 2024, Phase 1">
+          </div>
+
+        </div>
+
+        <div class="upload-modal-footer">
+          <span class="umf-quota">
+            <i class="bi bi-hdd me-1"></i>
+            {% if stor is defined %}
+              {{ stor.free_str }} available of {{ stor.limit_str }}
+            {% endif %}
+          </span>
+          <button type="button" class="btn-ghost" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-primary-pro" id="uploadSubmitBtn" disabled>
+            <i class="bi bi-upload me-1"></i>Upload
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+</div>
+
+<!-- Sidebar overlay for mobile -->
+<div class="sidebar-overlay" id="sidebarOverlay"
+     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:399;"
+     onclick="closeSidebar()"></div>
+
+{% endif %}{# end auth_content check #}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+/* ── Sidebar toggle (mobile) ─────────────────────────────── */
+function closeSidebar() {
+  const sb  = document.getElementById('sidebar');
+  const ov  = document.getElementById('sidebarOverlay');
+  if (sb)  sb.classList.remove('is-open');
+  if (ov)  ov.style.display = 'none';
+}
+
+(function () {
+  const toggle  = document.getElementById('sidebarToggle');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  if (!toggle || !sidebar) return;
+
+  toggle.addEventListener('click', () => {
+    const open = sidebar.classList.toggle('is-open');
+    if (overlay) overlay.style.display = open ? 'block' : 'none';
+  });
+})();
+
+/* ── Upload modal: drag & drop + file preview ──────────── */
+(function () {
+  const dropZone   = document.getElementById('dropZone');
+  const fileInput  = document.getElementById('fileInput');
+  const filePreview= document.getElementById('filePreview');
+  const fpName     = document.getElementById('fpName');
+  const fpSize     = document.getElementById('fpSize');
+  const fpIcon     = document.getElementById('fpIcon');
+  const submitBtn  = document.getElementById('uploadSubmitBtn');
+  if (!dropZone) return;
+
+  function fmtSize(b) {
+    if (b < 1024)       return b + ' B';
+    if (b < 1048576)    return (b/1024).toFixed(1) + ' KB';
+    if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+    return (b/1073741824).toFixed(2) + ' GB';
+  }
+
+  const EXT_ICONS = {
+    pdf:'bi-file-earmark-pdf-fill', doc:'bi-file-earmark-word-fill',
+    docx:'bi-file-earmark-word-fill', xls:'bi-file-earmark-excel-fill',
+    xlsx:'bi-file-earmark-excel-fill', ppt:'bi-file-earmark-ppt-fill',
+    pptx:'bi-file-earmark-ppt-fill', png:'bi-file-earmark-image-fill',
+    jpg:'bi-file-earmark-image-fill', jpeg:'bi-file-earmark-image-fill',
+    txt:'bi-file-earmark-text-fill', csv:'bi-file-earmark-spreadsheet-fill',
+    zip:'bi-file-earmark-zip-fill',  rar:'bi-file-earmark-zip-fill',
+    dwg:'bi-file-earmark-ruled-fill', dxf:'bi-file-earmark-ruled-fill',
+  };
+
+  function showPreview(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    fpName.textContent = file.name;
+    fpSize.textContent = fmtSize(file.size);
+    fpIcon.className   = 'bi ' + (EXT_ICONS[ext] || 'bi-file-earmark-fill') + ' fp-icon';
+    filePreview.classList.add('is-visible');
+    submitBtn.disabled = false;
+  }
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) showPreview(fileInput.files[0]);
+  });
+
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('is-over');
+  });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('is-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('is-over');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+    showPreview(file);
+  });
+})();
+</script>
+
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

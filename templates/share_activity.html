@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}Share Activity — {{ link.document.original_name if link.document else 'Deleted File' }}{% endblock %}
+{% block page_title %}Share Activity{% endblock %}
+{% block breadcrumb %}
+  <span>Home</span> <i class="bi bi-chevron-right"></i>
+  <a href="/shared-with-me">My Share Links</a> <i class="bi bi-chevron-right"></i>
+  <span>Activity</span>
+{% endblock %}
+
+{% block topbar_right %}
+<a href="/shared-with-me" class="btn-ghost"><i class="bi bi-arrow-left me-1"></i>Back</a>
+{% endblock %}
+
+{% block content %}
+
+{% set doc = link.document %}
+
+<!-- ── Hero Banner ────────────────────────────────────────── -->
+<div class="rb-banner share-hero-banner" style="margin-bottom:20px;">
+  <div class="rb-banner-left">
+    <div class="rb-banner-icon share-hero-icon">
+      {% if doc %}
+      <div class="file-icon ext-{{ doc.file_ext }}" style="width:44px;height:44px;font-size:22px;border-radius:10px;">
+        <i class="bi {{ ext_icon(doc.file_ext) }}"></i>
+      </div>
+      {% else %}
+      <i class="bi bi-file-earmark-x"></i>
+      {% endif %}
+    </div>
+    <div>
+      <p class="rb-banner-title">{{ doc.original_name if doc else 'File deleted' }}</p>
+      <p class="rb-banner-sub">
+        Created {{ link.created_at.strftime('%B %d, %Y · %H:%M') }}
+        {% if link.expires_at %}· Expires {{ link.expires_at.strftime('%b %d, %Y') }}{% endif %}
+        &nbsp;·&nbsp;
+        {% if link.visibility == 'public' %}<i class="bi bi-globe2"></i> Public
+        {% elif link.visibility == 'private' %}<i class="bi bi-lock-fill"></i> Password protected
+        {% else %}<i class="bi bi-envelope-check-fill"></i> Email restricted{% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="rb-banner-stats">
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ link.view_count }}</span>
+      <span class="rb-stat-lbl">Views</span>
+    </div>
+    <div class="rb-stat-divider"></div>
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ link.download_count or 0 }}</span>
+      <span class="rb-stat-lbl">Downloads</span>
+    </div>
+    <div class="rb-stat-divider"></div>
+    <div class="rb-stat">
+      <span class="rb-stat-val">{{ txns|length }}</span>
+      <span class="rb-stat-lbl">Emails Sent</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Send More Emails ───────────────────────────────────── -->
+{% if link.is_usable and smtp_configured %}
+<div class="section-card" style="margin-bottom:20px;">
+  <div class="section-card-header">
+    <h2 class="sch-title"><i class="bi bi-send-fill"></i> Send Link via Email</h2>
+  </div>
+  <form action="/share/{{ link.id }}/send-email" method="POST" style="padding:0 0 4px;">
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:1;min-width:220px;">
+        <label class="field-label">Recipient email(s)</label>
+        <div class="field-icon-wrap">
+          <i class="bi bi-envelope field-icon"></i>
+          <input type="text" name="emails" class="field-input"
+                 placeholder="e.g. juan@lgu.gov.ph, pedro@lgu.gov.ph" required>
+        </div>
+        <span class="field-hint">Separate multiple addresses with commas.</span>
+      </div>
+      <div style="flex:1;min-width:200px;">
+        <label class="field-label">Optional message</label>
+        <input type="text" name="note" class="field-input" placeholder="e.g. Please review by Friday.">
+      </div>
+      <div>
+        <button type="submit" class="btn-primary-pro">
+          <i class="bi bi-send me-1"></i>Send Email
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+{% elif not smtp_configured %}
+<div class="alert alert-warning mb-3" style="border-radius:10px;font-size:13px;">
+  <i class="bi bi-exclamation-triangle-fill me-2"></i>
+  SMTP is not configured. Set <code>SMTP_USER</code>, <code>SMTP_PASS</code>, and <code>APP_BASE_URL</code>
+  environment variables to enable email sending.
+</div>
+{% endif %}
+
+<!-- ── Transaction Table ──────────────────────────────────── -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="sch-title"><i class="bi bi-activity"></i> Email Delivery Log</h2>
+    <span class="sch-badge">{{ txns|length }}</span>
+  </div>
+
+  {% if txns %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Recipient</th>
+          <th>Sent</th>
+          <th>Status</th>
+          <th>Opened</th>
+          <th>Downloaded</th>
+          <th>Note / Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in txns %}
+        {% set icon, cls = t.status_icon %}
+        <tr>
+          <td>
+            <div class="file-cell">
+              <span class="uc-avatar uc-avatar-lg" style="font-size:11px;">{{ t.recipient_email[0]|upper }}</span>
+              <span class="file-name">{{ t.recipient_email }}</span>
+            </div>
+          </td>
+          <td class="cell-muted" style="white-space:nowrap;">
+            {{ t.sent_at.strftime('%b %d, %Y') }}<br>
+            <span style="font-size:11px;">{{ t.sent_at.strftime('%H:%M') }}</span>
+          </td>
+          <td>
+            <span class="status-pill {{ 'status-active' if t.status in ('delivered','opened','downloaded') else 'status-inactive' }}"
+                  style="gap:5px;">
+              <i class="bi {{ icon }} {{ cls }}" style="font-size:11px;"></i>
+              {{ t.status|capitalize }}
+            </span>
+          </td>
+          <td class="cell-muted" style="white-space:nowrap;">
+            {% if t.opened_at %}
+              {{ t.opened_at.strftime('%b %d · %H:%M') }}
+            {% else %}
+              <span style="color:var(--ink400);">—</span>
+            {% endif %}
+          </td>
+          <td class="cell-muted" style="white-space:nowrap;">
+            {% if t.downloaded_at %}
+              {{ t.downloaded_at.strftime('%b %d · %H:%M') }}
+            {% else %}
+              <span style="color:var(--ink400);">—</span>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--danger);max-width:200px;word-break:break-word;">
+            {{ t.error_msg or '' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-placeholder">
+    <i class="bi bi-envelope"></i>
+    <p>No emails sent yet for this link.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Timeline ───────────────────────────────────────────── -->
+{% if txns %}
+<div class="section-card" style="margin-top:20px;">
+  <div class="section-card-header">
+    <h2 class="sch-title"><i class="bi bi-clock-history"></i> Activity Timeline</h2>
+  </div>
+  <ul class="activity-feed" style="padding:8px 20px 12px;">
+    {% set events = [] %}
+    {% for t in txns %}
+      {% if t.downloaded_at %}{% set _ = events.append((t.downloaded_at, 'bi-download-fill', 'is-upload', t.recipient_email + ' downloaded the file')) %}{% endif %}
+      {% if t.opened_at %}{% set _ = events.append((t.opened_at, 'bi-eye-fill', 'is-login', t.recipient_email + ' opened the email / viewed the file')) %}{% endif %}
+      {% if t.sent_at %}{% set _ = events.append((t.sent_at, 'bi-send-fill', '', 'Email sent to ' + t.recipient_email)) %}{% endif %}
+    {% endfor %}
+    {% for ts, icon, dot_cls, label in events|sort(attribute='0', reverse=True) %}
+    <li class="af-item">
+      <span class="af-dot {{ dot_cls }}"></span>
+      <div class="af-body">
+        <span class="af-action">{{ label }}</span>
+        <span class="af-time">{{ ts.strftime('%b %d, %Y · %H:%M') }}</span>
+      </div>
+    </li>
+    {% endfor %}
+    <li class="af-item">
+      <span class="af-dot"></span>
+      <div class="af-body">
+        <span class="af-action">Share link created</span>
+        <span class="af-time">{{ link.created_at.strftime('%b %d, %Y · %H:%M') }}</span>
+      </div>
+    </li>
+  </ul>
+</div>
+{% endif %}
+
+{% endblock %}
