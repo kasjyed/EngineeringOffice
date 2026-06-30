@@ -103,7 +103,7 @@
 <!-- ── Enhanced Storage Panel ───────────────────────────── -->
 <div class="storage-panel" id="storagePanelCard">
   <div class="storage-panel-header">
-    <div class="sph-title"><i class="bi bi-hdd-stack-fill"></i> Storage Quota — 50 GB Limit</div>
+    <div class="sph-title"><i class="bi bi-hdd-stack-fill"></i> Storage Quota — {{ stor.limit_str }} Limit</div>
     <div class="sph-meta">
       <span><strong class="{{ 'text-danger' if stor.critical else 'text-warning' if stor.warning else '' }}">{{ stor.used_str }}</strong> used</span>
       <span class="sph-sep">·</span>
@@ -151,7 +151,7 @@
            style="width:{{ [stor.pct,100]|min }}%"></div>
     </div>
     <div class="sph-legend">
-      <span><strong>{{ stor.pct }}%</strong> of 50 GB used</span>
+      <span><strong>{{ stor.pct }}%</strong> of {{ stor.limit_str }} used</span>
       <span>{{ stor.free_str }} available</span>
     </div>
   </div>

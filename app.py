@@ -7,14 +7,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from functools import wraps
-import os, secrets, smtplib, threading
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import os
+import secrets
 
 # ── App Setup ─────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "sesf_prod_key_change_this")
+app.secret_key = os.environ.get("SECRET_KEY", "engoffice_maroon_2025_change_me")
 
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
@@ -22,28 +21,13 @@ TRASH_FOLDER  = os.path.join(BASE_DIR, "trash")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(TRASH_FOLDER,  exist_ok=True)
 
-ALLOWED_EXTENSIONS  = {
+ALLOWED_EXTENSIONS = {
     "pdf","doc","docx","xls","xlsx","ppt","pptx",
     "txt","csv","png","jpg","jpeg","dwg","dxf","zip","rar"
 }
-STORAGE_LIMIT_BYTES = 50 * 1024 * 1024 * 1024
+STORAGE_LIMIT_BYTES = 3 * 1024 * 1024 * 1024 * 1024
 MAX_FILE_BYTES      = 500 * 1024 * 1024
 RECYCLE_DAYS        = 15
-
-BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
-TRASH_FOLDER  = os.path.join(BASE_DIR, "trash")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(TRASH_FOLDER,  exist_ok=True)
-
-# ── SMTP Config — read live from os.environ so set/run order doesn't matter ───
-def SMTP_HOST():      return os.environ.get("SMTP_HOST",      "smtp.gmail.com")
-def SMTP_PORT():      return int(os.environ.get("SMTP_PORT",  "587"))
-def SMTP_USER():      return os.environ.get("SMTP_USER",      "")
-def SMTP_PASS():      return os.environ.get("SMTP_PASS",      "")
-def SMTP_FROM():      return os.environ.get("SMTP_FROM",      "") or os.environ.get("SMTP_USER", "")
-def SMTP_FROM_NAME(): return os.environ.get("SMTP_FROM_NAME", "Engineering Office Storage")
-def APP_BASE_URL():   return os.environ.get("APP_BASE_URL",   "http://localhost:5000").rstrip("/")
 
 app.config["SQLALCHEMY_DATABASE_URI"]        = f"sqlite:///{os.path.join(BASE_DIR,'database.db')}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -136,42 +120,33 @@ class ActivityLog(db.Model):
 
 class SharedLink(db.Model):
     """
-    visibility:
+    visibility options:
       'public'   — anyone with the link
       'private'  — password protected
-      'email'    — specific email addresses only
+      'email'    — specific email addresses only (stored comma-separated in allowed_emails)
     """
-    id               = db.Column(db.Integer,     primary_key=True)
-    token            = db.Column(db.String(64),  unique=True, nullable=False)
-    document_id      = db.Column(db.Integer,     db.ForeignKey("document.id"), nullable=True)
-    created_by       = db.Column(db.Integer,     db.ForeignKey("user.id"),     nullable=False)
-    visibility       = db.Column(db.String(10),  default="public")
-    password         = db.Column(db.String(255), nullable=True)
-    allowed_emails   = db.Column(db.Text,        nullable=True)
-    created_at       = db.Column(db.DateTime,    default=datetime.utcnow)
-    expires_at       = db.Column(db.DateTime,    nullable=True)
-    view_count       = db.Column(db.Integer,     default=0)
-    download_count   = db.Column(db.Integer,     default=0)
-    download_limit   = db.Column(db.Integer,     nullable=True)   # None = unlimited
-    is_active        = db.Column(db.Boolean,     default=True)
-    note             = db.Column(db.String(500), nullable=True)   # optional message to recipient
+    id             = db.Column(db.Integer,     primary_key=True)
+    token          = db.Column(db.String(64),  unique=True, nullable=False)
+    document_id    = db.Column(db.Integer,     db.ForeignKey("document.id"), nullable=False)
+    created_by     = db.Column(db.Integer,     db.ForeignKey("user.id"), nullable=False)
+    visibility     = db.Column(db.String(10),  default="public")  # public | private | email
+    password       = db.Column(db.String(255), nullable=True)     # hashed, for 'private'
+    allowed_emails = db.Column(db.Text,        nullable=True)     # comma-separated, for 'email'
+    created_at     = db.Column(db.DateTime,    default=datetime.utcnow)
+    expires_at     = db.Column(db.DateTime,    nullable=True)
+    view_count     = db.Column(db.Integer,     default=0)
+    is_active      = db.Column(db.Boolean,     default=True)
 
-    document     = db.relationship("Document", backref="shared_links", foreign_keys=[document_id])
-    sharer       = db.relationship("User",     foreign_keys=[created_by])
-    transactions = db.relationship("ShareTransaction", backref="link", lazy=True,
-                                   cascade="all, delete-orphan")
+    document = db.relationship("Document", backref="shared_links")
+    sharer   = db.relationship("User", foreign_keys=[created_by])
 
     @property
     def is_expired(self):
         return self.expires_at is not None and datetime.utcnow() >= self.expires_at
 
     @property
-    def download_limit_reached(self):
-        return self.download_limit is not None and self.download_count >= self.download_limit
-
-    @property
     def is_usable(self):
-        return self.is_active and not self.is_expired and not self.download_limit_reached
+        return self.is_active and not self.is_expired
 
     @property
     def needs_password(self):
@@ -183,45 +158,14 @@ class SharedLink(db.Model):
 
     @property
     def email_list(self):
+        """Return list of allowed emails (lowercase, stripped)."""
         if not self.allowed_emails:
             return []
         return [e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()]
 
     def email_allowed(self, email):
+        """Check if a given email is on the allowed list."""
         return email.strip().lower() in self.email_list
-
-
-class ShareTransaction(db.Model):
-    """Tracks every email-based share send + recipient open/download events."""
-    __tablename__ = "share_transaction"
-
-    id              = db.Column(db.Integer,     primary_key=True)
-    link_id         = db.Column(db.Integer,     db.ForeignKey("shared_link.id"), nullable=False)
-    recipient_email = db.Column(db.String(200), nullable=False)
-    sent_at         = db.Column(db.DateTime,    default=datetime.utcnow)
-    delivered       = db.Column(db.Boolean,     default=False)   # SMTP accepted without error
-    opened_at       = db.Column(db.DateTime,    nullable=True)   # first view after email
-    downloaded_at   = db.Column(db.DateTime,    nullable=True)   # first download after email
-    open_token      = db.Column(db.String(64),  unique=True, nullable=False)  # pixel / redirect token
-    error_msg       = db.Column(db.String(500), nullable=True)
-
-    @property
-    def status(self):
-        if self.downloaded_at: return "downloaded"
-        if self.opened_at:     return "opened"
-        if self.delivered:     return "delivered"
-        return "failed" if self.error_msg else "pending"
-
-    @property
-    def status_icon(self):
-        s = self.status
-        return {
-            "downloaded": ("bi-download-fill",    "text-success"),
-            "opened":     ("bi-eye-fill",          "text-info"),
-            "delivered":  ("bi-check2-all",        "text-primary"),
-            "failed":     ("bi-x-circle-fill",     "text-danger"),
-            "pending":    ("bi-hourglass-split",   "text-warning"),
-        }.get(s, ("bi-question-circle", "text-muted"))
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -241,7 +185,8 @@ def fmt_size(b):
     if b < 1024:       return f"{b} B"
     elif b < 1024**2:  return f"{b/1024:.1f} KB"
     elif b < 1024**3:  return f"{b/1024**2:.1f} MB"
-    else:              return f"{b/1024**3:.2f} GB"
+    elif b < 1024**4:  return f"{b/1024**3:.2f} GB"
+    else:              return f"{b/1024**4:.2f} TB"
 
 app.jinja_env.filters["fmt_size"] = fmt_size
 
@@ -351,95 +296,6 @@ def file_type_group(ext):
 app.jinja_env.globals["file_type_group"]  = file_type_group
 app.jinja_env.globals["FILE_TYPE_GROUPS"] = FILE_TYPE_GROUPS
 
-# ── SMTP Email ────────────────────────────────────────────────────────────────
-
-def _send_email_worker(to_email, subject, html_body, txn_id):
-    """Send email in background thread; update transaction status."""
-    with app.app_context():
-        txn = ShareTransaction.query.get(txn_id)
-        if not txn:
-            return
-        try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"]    = f"{SMTP_FROM_NAME()} <{SMTP_FROM()}>"
-            msg["To"]      = to_email
-            msg.attach(MIMEText(html_body, "html", "utf-8"))
-
-            with smtplib.SMTP(SMTP_HOST(), SMTP_PORT()) as srv:
-                srv.ehlo()
-                srv.starttls()
-                srv.login(SMTP_USER(), SMTP_PASS())
-                srv.sendmail(SMTP_FROM(), [to_email], msg.as_string())
-
-            txn.delivered  = True
-            txn.error_msg  = None
-        except Exception as exc:
-            txn.delivered  = False
-            txn.error_msg  = str(exc)[:490]
-        db.session.commit()
-
-
-def send_share_email_async(to_email, txn_id, link, doc, sender_name, note):
-    """Build the share email and fire it in a background thread."""
-    open_url     = f"{APP_BASE_URL()}/st/{txn_id}/open"
-    download_url = f"{APP_BASE_URL()}/st/{txn_id}/download"
-    share_url    = f"{APP_BASE_URL()}/s/{link.token}"
-
-    expiry_line = ""
-    if link.expires_at:
-        expiry_line = f"<p style='color:#888;font-size:13px;'>⏱ Link expires on {link.expires_at.strftime('%B %d, %Y')}.</p>"
-
-    limit_line = ""
-    if link.download_limit:
-        limit_line = f"<p style='color:#888;font-size:13px;'>⬇ Download limit: {link.download_limit} time(s).</p>"
-
-    note_block = ""
-    if note:
-        note_block = f"""
-        <div style="background:#f0f4ff;border-left:4px solid #4361ee;padding:12px 16px;margin:16px 0;border-radius:0 6px 6px 0;">
-          <p style="margin:0;color:#2c3e50;font-size:14px;">{note}</p>
-        </div>"""
-
-    html = f"""
-<!DOCTYPE html><html><body style="font-family:Inter,Arial,sans-serif;background:#f5f6fa;margin:0;padding:0;">
-<div style="max-width:520px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">
-  <div style="background:linear-gradient(135deg,#1a1f36 0%,#4361ee 100%);padding:32px 36px;">
-    <p style="margin:0;color:#a0aec0;font-size:12px;letter-spacing:1px;text-transform:uppercase;">Municipal Engineering Office</p>
-    <h1 style="margin:8px 0 0;color:#fff;font-size:22px;font-weight:700;">File Shared With You</h1>
-  </div>
-  <div style="padding:32px 36px;">
-    <p style="color:#2d3748;font-size:15px;margin-top:0;">
-      <strong>{sender_name}</strong> shared a file with you from the Engineering Office Storage system.
-    </p>
-    {note_block}
-    <div style="background:#f8f9ff;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin:20px 0;">
-      <p style="margin:0 0 4px;font-size:12px;color:#718096;text-transform:uppercase;letter-spacing:.5px;">File</p>
-      <p style="margin:0;font-size:16px;font-weight:600;color:#1a1f36;">{doc.original_name}</p>
-      <p style="margin:4px 0 0;font-size:13px;color:#718096;">{fmt_size(doc.file_size)} &nbsp;·&nbsp; {doc.category}</p>
-    </div>
-    {expiry_line}{limit_line}
-    <a href="{open_url}" style="display:block;background:#4361ee;color:#fff;text-align:center;padding:14px 24px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:600;margin:24px 0 12px;">View & Download File →</a>
-    <p style="color:#a0aec0;font-size:12px;text-align:center;margin:0;">
-      Or copy this link: <a href="{share_url}" style="color:#4361ee;">{share_url}</a>
-    </p>
-    <!-- tracking pixel -->
-    <img src="{APP_BASE_URL()}/st/{txn_id}/pixel.gif" width="1" height="1" style="display:none;" alt="">
-  </div>
-  <div style="background:#f5f6fa;padding:16px 36px;border-top:1px solid #e2e8f0;">
-    <p style="margin:0;color:#a0aec0;font-size:12px;">
-      Sent via Engineering Office Storage &nbsp;·&nbsp; Sta. Lucia, Ilocos Sur<br>
-      If you did not expect this file, you may ignore this email.
-    </p>
-  </div>
-</div>
-</body></html>"""
-
-    subject = f"{sender_name} shared \"{doc.original_name}\" with you"
-    t = threading.Thread(target=_send_email_worker, args=(to_email, subject, html, txn_id), daemon=True)
-    t.start()
-
-
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -453,6 +309,15 @@ def signup():
         email    = request.form["email"].strip().lower()
         password = request.form["password"]
         confirm  = request.form.get("confirm_password","")
+
+        # Security: the role is never trusted from the client.
+        # The very first account created becomes Admin automatically
+        # (so there's always someone who can manage the system).
+        # Every signup after that is forced to Staff. Admins can
+        # promote users later from the Users page.
+        is_first_user = User.query.count() == 0
+        role = "Admin" if is_first_user else "Staff"
+
         if len(password) < 6:
             flash("Password must be at least 6 characters.","danger"); return redirect("/signup")
         if password != confirm:
@@ -460,9 +325,12 @@ def signup():
         if User.query.filter_by(email=email).first():
             flash("That email is already registered.","danger"); return redirect("/signup")
         db.session.add(User(fullname=fullname, email=email,
-                            password=generate_password_hash(password)))
+                            password=generate_password_hash(password), role=role))
         db.session.commit()
-        flash("Account created — please sign in.","success")
+        if is_first_user:
+            flash("Account created as Admin (first account) — please sign in.","success")
+        else:
+            flash("Account created — please sign in.","success")
         return redirect("/login")
     return render_template("signup.html")
 
@@ -487,7 +355,6 @@ def login():
 @app.route("/logout")
 def logout():
     log_action("Signed out"); session.clear(); return redirect("/login")
-
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
@@ -535,7 +402,6 @@ def dashboard():
         top_uploaders=top_uploaders,
     )
 
-
 # ── Documents ─────────────────────────────────────────────────────────────────
 
 @app.route("/documents")
@@ -580,7 +446,6 @@ def documents():
         all_uploaders=all_uploaders,
         stor=storage_info(), doc_count=Document.query.count(),
     )
-
 
 # ── Users ─────────────────────────────────────────────────────────────────────
 
@@ -666,7 +531,6 @@ def user_history(uid):
         total_size=fmt_size(total), stor=storage_info(),
     )
 
-
 # ── Profile ───────────────────────────────────────────────────────────────────
 
 @app.route("/profile", methods=["GET","POST"])
@@ -694,7 +558,6 @@ def profile():
     my_docs = (Document.query.filter_by(uploaded_by=user.id)
                .order_by(Document.upload_date.desc()).all())
     return render_template("profile.html", user=user, my_docs=my_docs, stor=storage_info())
-
 
 # ── Upload ────────────────────────────────────────────────────────────────────
 
@@ -741,7 +604,6 @@ def upload():
     flash(f"'{original}' uploaded successfully.","success")
     return redirect(request.referrer or "/dashboard")
 
-
 # ── Pin ───────────────────────────────────────────────────────────────────────
 
 @app.route("/pin/<int:doc_id>", methods=["POST"])
@@ -754,7 +616,6 @@ def pin(doc_id):
     flash(f"'{doc.original_name}' {'pinned' if doc.is_pinned else 'unpinned'}.","info")
     return redirect(request.referrer or "/dashboard")
 
-
 # ── Download ──────────────────────────────────────────────────────────────────
 
 @app.route("/download/<int:doc_id>")
@@ -764,7 +625,6 @@ def download(doc_id):
     log_action("Downloaded file", doc.original_name)
     return send_from_directory(UPLOAD_FOLDER, doc.filename,
                                as_attachment=True, download_name=doc.original_name)
-
 
 # ── Share Links ───────────────────────────────────────────────────────────────
 
@@ -776,35 +636,17 @@ def create_share(doc_id):
         flash("You can only share your own files.", "danger")
         return redirect(request.referrer or "/dashboard")
 
-    visibility     = request.form.get("visibility", "public")
-    password       = request.form.get("password", "").strip()
-    emails_raw     = request.form.get("allowed_emails", "").strip()
-    expiry_opt     = request.form.get("expiry", "never")
-    note           = request.form.get("note", "").strip()
-    dl_limit_raw   = request.form.get("download_limit", "").strip()
-    send_email_now = request.form.get("send_email_now") == "1"
+    visibility = request.form.get("visibility", "public")
+    password   = request.form.get("password", "").strip()
+    emails_raw = request.form.get("allowed_emails", "").strip()
+    expiry_opt = request.form.get("expiry", "never")
 
     expires_at = None
     if expiry_opt == "1d":    expires_at = datetime.utcnow() + timedelta(days=1)
     elif expiry_opt == "7d":  expires_at = datetime.utcnow() + timedelta(days=7)
     elif expiry_opt == "30d": expires_at = datetime.utcnow() + timedelta(days=30)
-    elif expiry_opt == "custom":
-        custom_date = request.form.get("expiry_date", "").strip()
-        try:
-            expires_at = datetime.strptime(custom_date, "%Y-%m-%d")
-        except ValueError:
-            pass
 
-    download_limit = None
-    if dl_limit_raw:
-        try:
-            dl = int(dl_limit_raw)
-            if dl > 0:
-                download_limit = dl
-        except ValueError:
-            pass
-
-    hashed_pw      = None
+    hashed_pw     = None
     allowed_emails = None
 
     if visibility == "private":
@@ -814,10 +656,12 @@ def create_share(doc_id):
         hashed_pw = generate_password_hash(password)
 
     elif visibility == "email":
+        # Parse, validate and normalise email list
         raw_list = [e.strip().lower() for e in emails_raw.replace(";",",").split(",") if e.strip()]
         if not raw_list:
             flash("Please enter at least one email address.", "danger")
             return redirect(request.referrer or "/dashboard")
+        # Basic format check
         invalid = [e for e in raw_list if "@" not in e or "." not in e.split("@")[-1]]
         if invalid:
             flash(f"Invalid email address(es): {', '.join(invalid)}", "danger")
@@ -832,39 +676,11 @@ def create_share(doc_id):
         password=hashed_pw,
         allowed_emails=allowed_emails,
         expires_at=expires_at,
-        download_limit=download_limit,
-        note=note or None,
     )
     db.session.add(link)
     db.session.commit()
     log_action("Created share link", f"{doc.original_name} [{visibility}]")
-
-    # ── Send email(s) if requested ────────────────────────────────────────────
-    emails_to_notify = []
-    if send_email_now and SMTP_USER():
-        if visibility == "email" and allowed_emails:
-            emails_to_notify = link.email_list
-        else:
-            extra = request.form.get("notify_emails", "").strip()
-            if extra:
-                emails_to_notify = [e.strip().lower() for e in extra.replace(";",",").split(",") if e.strip()]
-
-    sender_name = session.get("fullname", "Engineering Office")
-    for recip in emails_to_notify:
-        txn = ShareTransaction(
-            link_id=link.id,
-            recipient_email=recip,
-            open_token=secrets.token_urlsafe(20),
-        )
-        db.session.add(txn)
-        db.session.commit()
-        send_share_email_async(recip, txn.id, link, doc, sender_name, note)
-
-    if emails_to_notify:
-        flash(f"Share link created and email sent to {len(emails_to_notify)} recipient(s).", "success")
-    else:
-        flash(f"Share link created for '{doc.original_name}'. Copy it from My Share Links.", "success")
-
+    flash(f"Share link created for '{doc.original_name}'. Copy it from My Share Links.", "success")
     return redirect("/shared-with-me")
 
 
@@ -876,163 +692,6 @@ def shared_with_me():
              .filter_by(created_by=session["user_id"])
              .order_by(SharedLink.created_at.desc()).all())
     return render_template("shared_with_me.html", links=links, stor=storage_info())
-
-
-# ── Email Share — also send to additional recipients on existing link ─────────
-
-@app.route("/share/<int:link_id>/send-email", methods=["POST"])
-@login_required
-def send_link_email(link_id):
-    link = SharedLink.query.get_or_404(link_id)
-    if link.created_by != session["user_id"] and session.get("role") != "Admin":
-        flash("Not authorised.", "danger")
-        return redirect("/shared-with-me")
-    if not link.is_usable:
-        flash("This link is no longer active.", "danger")
-        return redirect("/shared-with-me")
-    if not SMTP_USER():
-        flash("SMTP is not configured. Set SMTP_USER and SMTP_PASS environment variables.", "warning")
-        return redirect("/shared-with-me")
-
-    emails_raw = request.form.get("emails","").strip()
-    raw_list   = [e.strip().lower() for e in emails_raw.replace(";",",").split(",") if e.strip()]
-    if not raw_list:
-        flash("No email address provided.", "danger")
-        return redirect("/shared-with-me")
-
-    doc         = link.document
-    sender_name = session.get("fullname","Engineering Office")
-    note        = request.form.get("note","").strip()
-
-    sent = 0
-    for recip in raw_list:
-        txn = ShareTransaction(
-            link_id=link.id,
-            recipient_email=recip,
-            open_token=secrets.token_urlsafe(20),
-        )
-        db.session.add(txn)
-        db.session.commit()
-        send_share_email_async(recip, txn.id, link, doc, sender_name, note)
-        sent += 1
-
-    log_action("Sent share email", f"{doc.original_name if doc else ''} → {emails_raw}")
-    flash(f"Email sent to {sent} recipient(s).", "success")
-    return redirect("/shared-with-me")
-
-
-# ── Share Transaction Tracking Endpoints ──────────────────────────────────────
-
-@app.route("/st/<int:txn_id>/pixel.gif")
-def share_pixel(txn_id):
-    """1×1 transparent GIF tracking pixel — marks email as opened."""
-    txn = ShareTransaction.query.get(txn_id)
-    if txn and not txn.opened_at:
-        txn.opened_at = datetime.utcnow()
-        db.session.commit()
-    gif = b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x00\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
-    resp = make_response(gif)
-    resp.headers["Content-Type"]  = "image/gif"
-    resp.headers["Cache-Control"] = "no-store, no-cache"
-    return resp
-
-
-@app.route("/st/<int:txn_id>/open")
-def share_txn_open(txn_id):
-    """Redirect from email CTA; marks as opened and goes to share view."""
-    txn = ShareTransaction.query.get(txn_id)
-    if txn:
-        if not txn.opened_at:
-            txn.opened_at = datetime.utcnow()
-            db.session.commit()
-        link = txn.link
-        if link and link.is_usable:
-            # For email-restricted links, pre-authorise the recipient via session
-            if link.needs_email:
-                session[f"share_email_{link.id}"] = txn.recipient_email
-            return redirect(url_for("view_shared", token=link.token))
-    return render_template("share_invalid.html"), 404
-
-
-@app.route("/st/<int:txn_id>/download")
-def share_txn_download(txn_id):
-    """Direct download from email CTA; marks downloaded + pre-authorises."""
-    txn = ShareTransaction.query.get(txn_id)
-    if not txn:
-        return render_template("share_invalid.html"), 404
-    link = txn.link
-    if not link or not link.is_usable:
-        return render_template("share_invalid.html"), 404
-    if not txn.opened_at:
-        txn.opened_at = datetime.utcnow()
-    if not txn.downloaded_at:
-        txn.downloaded_at = datetime.utcnow()
-    db.session.commit()
-    if link.needs_email:
-        session[f"share_email_{link.id}"] = txn.recipient_email
-    doc = link.document
-    if not doc:
-        return render_template("share_invalid.html"), 404
-    link.download_count = (link.download_count or 0) + 1
-    db.session.commit()
-    return send_from_directory(UPLOAD_FOLDER, doc.filename,
-                               as_attachment=True, download_name=doc.original_name)
-
-
-# ── Share Transaction Dashboard ───────────────────────────────────────────────
-
-@app.route("/share/<int:link_id>/activity")
-@login_required
-def share_activity(link_id):
-    link = SharedLink.query.get_or_404(link_id)
-    if link.created_by != session["user_id"] and session.get("role") != "Admin":
-        abort(403)
-    txns = (ShareTransaction.query.filter_by(link_id=link_id)
-            .order_by(ShareTransaction.sent_at.desc()).all())
-    return render_template(
-        "share_activity.html",
-        link=link, txns=txns,
-        stor=storage_info(),
-        smtp_configured=bool(SMTP_USER()),
-    )
-
-
-# ── Email Shares Dashboard (all my outgoing share emails) ─────────────────────
-
-@app.route("/share-emails")
-@login_required
-def share_emails():
-    my_links = SharedLink.query.filter_by(created_by=session["user_id"]).all()
-    link_ids = [l.id for l in my_links]
-    txns = (ShareTransaction.query.filter(ShareTransaction.link_id.in_(link_ids))
-            .order_by(ShareTransaction.sent_at.desc()).all()) if link_ids else []
-    stats = {
-        "total":      len(txns),
-        "delivered":  sum(1 for t in txns if t.delivered),
-        "opened":     sum(1 for t in txns if t.opened_at),
-        "downloaded": sum(1 for t in txns if t.downloaded_at),
-        "failed":     sum(1 for t in txns if t.error_msg),
-    }
-    return render_template(
-        "share_emails.html",
-        txns=txns, stats=stats,
-        stor=storage_info(),
-        smtp_configured=bool(SMTP_USER()),
-    )
-
-
-@app.route("/share/<int:link_id>/revoke", methods=["POST"])
-@login_required
-def revoke_share(link_id):
-    link = SharedLink.query.get_or_404(link_id)
-    if link.created_by != session["user_id"] and session.get("role") != "Admin":
-        flash("You can only revoke your own share links.", "danger")
-        return redirect("/shared-with-me")
-    link.is_active = False
-    db.session.commit()
-    log_action("Revoked share link", link.document.original_name if link.document else "")
-    flash("Share link revoked.", "info")
-    return redirect(request.referrer or "/shared-with-me")
 
 
 # ── Public share viewer ───────────────────────────────────────────────────────
@@ -1050,18 +709,20 @@ def view_shared(token):
     pw_key    = f"share_unlocked_{link.id}"
     email_key = f"share_email_{link.id}"
 
+    # ── Email-restricted gate ────────────────────────────────────────────────
     if link.needs_email:
         if not session.get(email_key):
             error = None
             if request.method == "POST":
                 submitted = request.form.get("email", "").strip().lower()
                 if link.email_allowed(submitted):
-                    session[email_key] = submitted
+                    session[email_key] = submitted   # store which email was used
                     return redirect(url_for("view_shared", token=token))
                 else:
                     error = "This email address is not authorised to view this file."
             return render_template("share_email_gate.html", link=link, doc=doc, error=error)
 
+    # ── Password gate ────────────────────────────────────────────────────────
     if link.needs_password:
         if not session.get(pw_key):
             error = None
@@ -1074,6 +735,7 @@ def view_shared(token):
                     error = "Incorrect password. Please try again."
             return render_template("share_password.html", link=link, doc=doc, error=error)
 
+    # ── Increment view count once per session ────────────────────────────────
     view_key = f"share_viewed_{link.id}"
     if not session.get(view_key):
         link.view_count += 1
@@ -1108,9 +770,6 @@ def download_shared(token):
     doc = link.document
     if not doc:
         return render_template("share_invalid.html"), 404
-
-    link.download_count = (link.download_count or 0) + 1
-    db.session.commit()
 
     return send_from_directory(UPLOAD_FOLDER, doc.filename,
                                as_attachment=True, download_name=doc.original_name)
@@ -1152,6 +811,19 @@ def preview_shared(token):
     return response
 
 
+@app.route("/share/<int:link_id>/revoke", methods=["POST"])
+@login_required
+def revoke_share(link_id):
+    link = SharedLink.query.get_or_404(link_id)
+    if link.created_by != session["user_id"] and session.get("role") != "Admin":
+        flash("You can only revoke your own share links.", "danger")
+        return redirect("/shared-with-me")
+    link.is_active = False
+    db.session.commit()
+    log_action("Revoked share link", link.document.original_name if link.document else "")
+    flash("Share link revoked.", "info")
+    return redirect(request.referrer or "/shared-with-me")
+
 # ── Recycle Bin ───────────────────────────────────────────────────────────────
 
 @app.route("/delete/<int:doc_id>", methods=["POST"])
@@ -1161,11 +833,6 @@ def delete(doc_id):
     if doc.uploaded_by != session["user_id"] and session.get("role") != "Admin":
         flash("You can only delete your own files.","danger")
         return redirect(request.referrer or "/dashboard")
-
-    # Nullify share links so they don't break (shows "file deleted" in UI)
-    for sl in SharedLink.query.filter_by(document_id=doc.id).all():
-        sl.document_id = None
-    db.session.flush()
 
     src  = os.path.join(UPLOAD_FOLDER, doc.filename)
     dest = os.path.join(TRASH_FOLDER,  doc.filename)
@@ -1249,33 +916,12 @@ def empty_recycle_bin():
     flash(f"Recycle Bin emptied — {count} file(s) permanently deleted.","danger")
     return redirect("/recycle-bin")
 
-
 # ── API ───────────────────────────────────────────────────────────────────────
 
 @app.route("/api/storage")
 @login_required
 def api_storage():
     return jsonify(storage_info())
-
-
-@app.route("/api/share/<int:link_id>/transactions")
-@login_required
-def api_share_transactions(link_id):
-    link = SharedLink.query.get_or_404(link_id)
-    if link.created_by != session["user_id"] and session.get("role") != "Admin":
-        abort(403)
-    txns = ShareTransaction.query.filter_by(link_id=link_id).order_by(ShareTransaction.sent_at.desc()).all()
-    return jsonify([{
-        "id":             t.id,
-        "recipient":      t.recipient_email,
-        "sent_at":        t.sent_at.isoformat(),
-        "delivered":      t.delivered,
-        "opened_at":      t.opened_at.isoformat() if t.opened_at else None,
-        "downloaded_at":  t.downloaded_at.isoformat() if t.downloaded_at else None,
-        "status":         t.status,
-        "error":          t.error_msg,
-    } for t in txns])
-
 
 # ── Error Handlers ────────────────────────────────────────────────────────────
 
@@ -1295,7 +941,6 @@ def not_found(e):
 def too_large(e):
     flash(f"File too large. Maximum allowed is {fmt_size(MAX_FILE_BYTES)}.","danger")
     return redirect(request.referrer or "/dashboard")
-
 
 # ── Init ──────────────────────────────────────────────────────────────────────
 
